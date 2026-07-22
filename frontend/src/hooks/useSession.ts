@@ -2,6 +2,10 @@ import { useCallback, useState } from 'react';
 import { api } from '../api/client';
 import type { SessionSummary } from '../types';
 
+function isWrappedSession(data: any): data is { session: SessionSummary } {
+  return data && typeof data === 'object' && 'session' in data;
+}
+
 export const useSession = () => {
   const [session, setSession] = useState<SessionSummary | null>(null);
 
@@ -24,7 +28,7 @@ export const useSession = () => {
   const nextSession = useCallback(async () => {
     try {
       const data = await api.nextCustomer();
-      const sessionPayload = (data as { session?: SessionSummary } | SessionSummary)?.session ?? data;
+      const sessionPayload = isWrappedSession(data) ? data.session : data;
       setSession((current) => current ? { ...current, ...sessionPayload } : sessionPayload as SessionSummary);
     } catch {
       // keep UI responsive without backend

@@ -1,13 +1,47 @@
+# Local secrets and environment configuration
+# Keep all .env files private, but commit the example.
 .env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Python artifacts
 __pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
 .pytest_cache/
 .test_deps/
-.venv/
-*.pyc
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
 data/session.db
-data/originals/*
-data/imports/*
-data/logs/*
-!data/originals/.gitkeep
-!data/imports/.gitkeep
-!data/logs/.gitkeep
+
+# Logs, user data, and other generated files
+# The entire /data directory is ignored as it contains PII, logs, and exports.
+# This is the most critical rule in this file.
+/data/
+/bot.log*
+
+# Misplaced root-level frontend build artifacts
+/assets/
+/index.html
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE configuration
+.vscode/
+!.vscode/extensions.json
+.idea/

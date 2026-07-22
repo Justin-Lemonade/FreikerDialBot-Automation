@@ -8,9 +8,13 @@ const defaultCustomer: Customer = {
   loanNumber: 'Loan #123456',
   balance: 550,
   daysLate: 18,
-  phone: '+992900123456',
+  phone: '+15551234567',
   notes: ['Wife answered yesterday', 'Requested callback after 4 PM'],
 };
+
+function isWrappedCustomer(data: any): data is { customer: Customer } {
+  return data && typeof data === 'object' && 'customer' in data;
+}
 
 export const useCustomer = () => {
   const [customer, setCustomer] = useState<Customer | null>(defaultCustomer);
@@ -18,7 +22,7 @@ export const useCustomer = () => {
   const refreshCustomer = useCallback(async () => {
     try {
       const data = await api.getCurrentCustomer();
-      const payload = (data as { customer?: Customer } | Customer)?.customer ?? data;
+      const payload = isWrappedCustomer(data) ? data.customer : data;
       setCustomer(payload as Customer);
     } catch {
       setCustomer(defaultCustomer);
@@ -28,7 +32,7 @@ export const useCustomer = () => {
   const nextCustomer = useCallback(async () => {
     try {
       const data = await api.nextCustomer();
-      const payload = (data as { customer?: Customer } | Customer)?.customer ?? data;
+      const payload = isWrappedCustomer(data) ? data.customer : data;
       setCustomer(payload as Customer);
     } catch {
       setCustomer(defaultCustomer);
@@ -38,7 +42,7 @@ export const useCustomer = () => {
   const prefetchCustomer = useCallback(async () => {
     try {
       const data = await api.nextCustomer();
-      const payload = (data as { customer?: Customer } | Customer)?.customer ?? data;
+      const payload = isWrappedCustomer(data) ? data.customer : data;
       setCustomer((current) => current ?? (payload as Customer));
     } catch {
       // no-op
