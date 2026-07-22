@@ -1,0 +1,13 @@
+.env
+__pycache__/
+.pytest_cache/
+.test_deps/
+.venv/
+*.pyc
+data/session.db
+data/originals/*
+data/imports/*
+data/logs/*
+!data/originals/.gitkeep
+!data/imports/.gitkeep
+!data/logs/.gitkeep

@@ -1,0 +1,228 @@
+# Telegram Mini App — Backend API Contract
+
+The backend is the single source of truth. Every endpoint below is a thin
+HTTP wrapper around `QueueEngine`, `SessionManager`, or `StatisticsEngine`
+— none of them contain business logic of their own, and none of them
+duplicate what those classes already do. `mini_app_api.py`'s
+`MiniAppService` is the only thing that translates between HTTP JSON and
+the existing Python service objects.
+
+Base URL: `/api` by default (see `client.ts` / `VITE_API_BASE_URL`).
+Server: `mini_app_api.py`, runs as its own process (`python mini_app_api.py`,
+default port 8000), separate from the Telegram bot process. Both share the
+same SQLite database file.
+
+## Ownership model
+
+This mirrors exactly how the existing backend is already structured — no
+new components were introduced, only clarified:
+
+| Owns | Class | Notes |
+|---|---|---|
+| Queue, current customer, status transitions | `QueueEngine` | The Mini App never writes `queue_session` or customer status directly; it calls `apply_action`, `next_customer`, `peek_next_customer`, `set_active_customer`, `pause`, `restart_call_later`. |
+| Active session, progress, resume, completion | `SessionManager` | `MiniAppService` calls `start_current_session` / `complete_current_session`, never touches the `sessions` table directly. |
+| Analytics, history, exports | `StatisticsEngine` / `export_engine` | All event recording goes through `StatisticsEngine.record_event`; exports go through `export_engine.export_customers`. |
+| Presentation only | Mini App frontend | Receives JSON, renders it, sends user intent back as HTTP calls. It should never need to know queue/session/statistics business rules to function correctly. |
+
+`MiniAppService` itself is not "the frontend" — it's a backend adapter
+(like `telegram_ui.py`/`queue_ui.py` are for the bot). It owns HTTP
+JSON shaping only.
+
+## Authentication
+
+Uses Telegram's official [Mini App initData validation](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app)
+algorithm — implemented in `telegram_auth.py`, no custom auth system.
+
+**How to send it:** `Authorization: tma <initData>` header (Telegram's
+recommended scheme), or `X-Telegram-Init-Data: <initData>` as a fallback.
+`initData` is the raw string Telegram's WebApp JS SDK exposes as
+`window.Telegram.WebApp.initData`.
+
+**Current enforcement (intentional, temporary):**
+- No `Authorization` header at all → request is allowed through as
+  **anonymous** (`telegram_user_id=None` in all recorded events).
+- An `Authorization` header **is** present but fails validation (bad
+  signature, expired `auth_date`, malformed) → **401**, always rejected,
+  never silently downgraded to anonymous.
+
+This is deliberately permissive on the "no header" case because the
+frontend doesn't send `initData` on every request yet. **Once the real
+Mini App frontend is finished and always sends it, flip enforcement to
+reject missing credentials too** — that's a one-line change in
+`MiniAppRequestHandler._dispatch` (treat `telegram_user_id is None` as
+401 for mutating routes), deliberately not done yet so this backend work
+doesn't block on frontend completion.
+
+`auth_date` freshness window: `MINI_APP_AUTH_MAX_AGE_SECONDS` env var
+(default 86400 = 24h).
+
+## Endpoints
+
+### `GET /session/current`
+- **Purpose:** Full dashboard state — session info, progress, current customer, today's stats.
+- **Request:** none.
+- **Response:**
+  ```json
+  {
+    "sessionId": 12,
+    "currentCustomerIndex": 4,
+    "customerCount": 20,
+    "answeredToday": 9,
+    "estimatedRemaining": 16,
+    "averageCallTime": "2m 18s",
+    "completed": false,
+    "currentCustomer": { "...": "see /customer/current shape" },
+    "progress": { "remaining": 16, "contacted": 3, "didNotAnswer": 1, "percent": 20 }
+  }
+  ```
+- **Errors:** none (always 200; empty/zero state if nothing imported).
+- **Caller:** Mini App, on load and after most actions.
+- **Status:** ✅ implemented. Side-effect-free (peeks, never advances the
+  queue). Also the one place that finalizes a session once it's fully
+  handled (see "Session Finished" below).
+
+### `GET /customer/current`
+- **Purpose:** Just the current (or next-up) customer, without the full session envelope.
+- **Response:** `{"id": "5", "name": "...", "loanNumber": "...", "balance": "...", "daysLate": "...", "phone": "...", "notes": [...], "status": "waiting", "isBlacklisted": false}` or `{}` if none.
+- **Status:** ✅ implemented. Side-effect-free (peek only).
+
+### `GET /customer/search?q=<query>`
+- **Purpose:** Search by name, loan number, or phone number substring. Mirrors Telegram's `/customer <query>`.
+- **Response:** `{"results": [ {...same shape as /customer/current...}, ... ]}` (up to 20).
+- **Status:** ✅ implemented (customer-history pass). Searches every customer regardless of status.
+
+### `GET /customer/record?id=<id>`
+- **Purpose:** The full customer view — Phase 2's shared record: identity, blacklist state (customer- and phone-level), notes, and full event history. This is `Database.get_customer_record()` verbatim — the exact same method Telegram's `/customer` and "More Info" use, not a separate assembly.
+- **Response:** base customer fields (snake_case, unlike the camelCase `/customer/current` shape — this is the raw repository record) plus `"notes": [{"text", "telegram_user_id", "timestamp"}, ...]`, `"history": [{"event_type", "telegram_user_id", "event_timestamp", "notes", ...}, ...]`, `"blacklisted_phones": [...]`, `"is_blacklisted": bool`.
+- **Errors:** `404 {"error": "Customer not found"}`; `400` if `id` missing.
+- **Status:** ✅ implemented.
+
+### `POST /customer/edit`
+- **Purpose:** Edit a customer's own fields. Mirrors Telegram's `/edit`.
+- **Request:** `{"customerId": 5, "fields": {"balance": "500", "phone_numbers": ["+15551234567"]}}`. Editable: `first_name`, `last_name`, `balance`, `days_overdue`, `phone_numbers` (already-normalized list — the Mini App frontend, when built, should run values through the same normalization `validation.normalize_phone_number` does before sending, same as Telegram's `/edit` does). **Not editable:** `loan_number` (the import-time unique key) or `status` (that's `/call/result`'s job).
+- **Response:** `{"ok": true, "customer": {...}}` or `{"ok": false, "error": "Customer not found"}`.
+- **Status:** ✅ implemented. Delegates to `QueueEngine.edit_customer`, which audits exactly what changed.
+
+### `POST /customer/blacklist`
+- **Purpose:** Blacklist or un-blacklist a whole customer. Mirrors Telegram's `/blacklist` / `/unblacklist`.
+- **Request:** `{"customerId": 5, "blacklisted": true}`
+- **Response:** `{"ok": true, "customer": {...}}`
+- **Status:** ✅ implemented. State + audit trail only — does **not** auto-skip blacklisted customers in the calling queue (deliberate, see `BACKLOG.md`).
+
+### `POST /phone/blacklist`
+- **Purpose:** Blacklist or un-blacklist a single phone number, independent of any customer record. Mirrors Telegram's `/blacklist_phone` / `/unblacklist_phone`.
+- **Request:** `{"phone": "+15551234567", "blacklisted": true, "reason": "abuse"}`
+- **Response:** `{"ok": true, "phone": "...", "blacklisted": true}`
+- **Status:** ✅ implemented.
+
+### `POST /call/start`
+- **Purpose:** "Call Started" event. Marks a customer as the active one and starts the session if needed.
+- **Request:** `{"customerId": "5"}` (optional — omit to let the engine pick the next customer).
+- **Response:** `{"ok": true, "customerId": 5, "startedAt": "2026-07-13T..."}`
+- **Errors:** `{"ok": false, "error": "No customer available"}` if the queue is empty and no id was given.
+- **Caller:** Mini App, when the operator taps "Call".
+- **Status:** ✅ implemented. Explicit-id path goes through `QueueEngine.set_active_customer` (added this pass) instead of writing `queue_session` directly.
+
+### `POST /call/return`
+- **Purpose:** "Call Returned" event — the operator came back to the Mini App after dialing. Informational only; does not change queue/customer state (that only changes via `/call/result`).
+- **Request:** `{"customerId": "5"}`
+- **Response:** `{"ok": true, "customerId": 5}`
+- **Status:** ✅ implemented (new this pass). Not yet called by the frontend — hook up `App.tsx`'s `onReturnFromCall` to it when the frontend work resumes.
+
+### `POST /call/result`
+- **Purpose:** "Outcome Selected" event. Applies the outcome and advances the queue in one committed step.
+- **Request:** `{"customerId": "5", "outcome": "answered", "duration": 132}`. Outcomes: `answered`/`contacted` → warned, `did_not_answer`/`call_again` → call_later, `wrong_number` → invalid_number, `skip` → skip, `paid` → paid.
+- **Response:**
+  ```json
+  {
+    "ok": true, "customerId": 5, "outcome": "answered", "status": "warned", "duration": 132,
+    "nextCustomer": { "...": "customer payload, or null if queue is empty" },
+    "session": { "...": "same shape as GET /session/current" }
+  }
+  ```
+  The response already includes the next customer/session — the frontend
+  should use these directly rather than calling `/session/next`
+  afterward, which would advance the queue a **second** time.
+- **Status:** ✅ implemented. Delegates to `QueueEngine.apply_action`, so it gets the same validity guards Telegram has (e.g. a `needs_review` customer can only be skipped/marked invalid). Persists `duration` to `customer_events.duration_seconds`.
+
+### `POST /session/next`
+- **Purpose:** "Next Customer Requested" — explicitly advance the queue without submitting an outcome (e.g. operator taps "Skip" without an outcome flow, or manually re-syncs).
+- **Response:** `{"customer": {...}, "session": {...}}`
+- **Status:** ✅ implemented. This is the one endpoint that intentionally commits a queue advance from a client-initiated action outside of `/call/result`. **Do not call this after `/call/result`** — see note above.
+
+### `POST /note`
+- **Purpose:** Save an operator note against a customer, without submitting a call outcome.
+- **Request:** `{"customerId": "5", "note": "Wife answered, call back after 4pm"}`
+- **Response:** `{"ok": true, "customerId": 5, "note": "..."}`
+- **Status:** ✅ implemented. Recorded as `customer_note_added` (fixed this pass — previously miscounted as `customer_warned`, which inflated daily "contacted" stats).
+
+### `POST /queue/pause`
+- **Purpose:** Pause the queue (mirrors Telegram's `/pause`).
+- **Response:** `{"ok": true, "paused": true}`
+- **Status:** ✅ implemented. No explicit `/queue/resume` yet — resuming currently only happens as a side effect of `/call/start` or `/call/result` calling `SessionManager.start_current_session`. Add `POST /queue/resume` → `QueueEngine.resume()` if the Mini App needs an explicit un-pause button.
+
+### `POST /queue/call-back`
+- **Purpose:** Requeue every `call_later` customer back to `waiting` (mirrors Telegram's "Call Back" button).
+- **Response:** `{"ok": true, "customer": {...}, "session": {...}, "complete": false}`
+- **Status:** ✅ implemented.
+
+### `GET /export?format=csv|json|xlsx`
+- **Purpose:** Download all customer records (mirrors Telegram's `/export` admin command).
+- **Auth required:** yes. `Authorization: tma <initData>` with a Telegram user id in `ADMIN_TELEGRAM_USER_IDS`. Missing or non-admin credentials → `403`.
+- **Response:** Binary file stream, `Content-Disposition: attachment`.
+- **Errors:** `403 {"error": "Admin authorization required for export."}` if not an admin; `400 {"error": "No customers to export."}` if nothing to export.
+- **Status:** ✅ implemented, including the authorization gate (added in the architecture consolidation pass — see `ARCHITECTURE.md`). Matches Telegram's `/export` exactly via the shared `security.is_admin()`. Successful exports are audit-logged (`admin_action` event in `customer_events`), same as Telegram's.
+
+### `GET /statistics`
+- **Purpose:** "Statistics Updated" read — today's and lifetime numbers.
+- **Response:** `{"today": {...}, "lifetime": {...}, "averageContactsPerSession": N, "averageSecondsPerCustomer": N, "todaysCalls": N, "answered": N, "didntAnswer": N, "wrongNumber": 0, "averageCallTime": "...", "successRate": "67%", "lifetimeCalls": N, "sessions": N, "customersContacted": N, "bestDay": "N/A"}`
+- **Status:** ✅ implemented. `wrongNumber` and `bestDay` are always placeholder values (`0` / `"N/A"`) — `StatisticsEngine` doesn't currently break out "invalid_number" as its own daily-tracked bucket or track per-day volume for a "best day" comparison. Not fixed here since it would mean extending `StatisticsEngine`'s schema/logic, which is out of scope for "expose what exists."
+
+## Session Finished (backend event)
+
+There's no separate `POST /session/complete` endpoint. Instead,
+`GET /session/current` (called by the frontend on basically every screen)
+detects when `progress.remaining == 0` and `total_customers > 0`, and
+calls `SessionManager.complete_current_session()` as a side effect —
+finalizing `duration_seconds`, `finished_at`, and firing the
+`queue_completed` daily stat. This is idempotent and safe to poll
+repeatedly. It intentionally does **not** create a new session just
+because customers still exist in the database — see the code comment in
+`get_current_session()` for the specific bug this avoids (re-polling a
+completed queue would otherwise spawn a fresh session every time).
+
+## Telegram Mini App launch
+
+- `MINI_APP_URL` env var (must be `https://`) — if set, the bot's
+  persistent menu button becomes a "Open App" Web App button
+  (`bot.py::_post_init`), and `/app` sends an inline Web App button too.
+  If unset, both fall back to the normal command menu / a text message
+  telling the operator it isn't configured yet — nothing crashes either way.
+- No frontend exists at that URL yet. This is prep work only, per the brief.
+
+## Areas that will move from Telegram chat into the Mini App
+
+Marked here, left fully functional in Telegram for now — nothing removed:
+
+- `queue_ui.py`'s inline-keyboard call actions (Contacted / Didn't Answer
+  / Wrong Number / Skip / Delete) — functionally duplicated by
+  `/call/result`, `/note` in the Mini App. Telegram's buttons stay as
+  the fallback/secondary surface.
+- `stats_ui.py`'s `/stats`, `/session` — duplicated by `/statistics`,
+  `/session/current`.
+- `admin_commands.py`'s `/export` — duplicated by `GET /export`, both
+  now gated by the same shared `security.is_admin()` rule (see
+  `ARCHITECTURE.md`). Telegram's stays the authorization-checked
+  fallback surface, same as the others above.
+
+## Known gaps / not done in this pass
+
+- **No enforcement of auth on missing credentials for most endpoints**
+  (see Authentication above) — anonymous requests are still allowed
+  through everywhere except `/export`, which now requires admin
+  authorization (fixed in the architecture consolidation pass).
+- **CORS is wide open** (`Access-Control-Allow-Origin: *`) on every
+  response. Fine for local development, should be restricted to the
+  real Mini App origin once one exists.
+- **No `POST /queue/resume`** (see above).
+- Full list of related but out-of-scope items: see `BACKLOG.md`.

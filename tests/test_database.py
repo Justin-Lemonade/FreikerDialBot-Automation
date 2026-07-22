@@ -1,0 +1,271 @@
+from __future__ import annotations
+
+import pytest
+
+from database import Database
+
+
+SAMPLE = [
+    {
+        "loan_number": "L001",
+        "first_name": "Ann",
+        "last_name": "Owens",
+        "phone_numbers": ["+15550001111"],
+        "balance": "500",
+        "days_overdue": "10",
+    },
+    {
+        "loan_number": "L002",
+        "first_name": "Bo",
+        "last_name": "Kim",
+        "phone_numbers": ["+15550002222"],
+        "balance": "750",
+        "days_overdue": "20",
+    },
+]
+
+
+@pytest.fixture
+def database(tmp_path) -> Database:
+    db = Database(path=tmp_path / "session.db")
+    db.insert_customers(SAMPLE)
+    return db
+
+
+class TestSearch:
+    def test_search_by_first_name(self, database):
+        results = database.search_customers("Ann")
+        assert [r["loan_number"] for r in results] == ["L001"]
+
+    def test_search_by_loan_number(self, database):
+        results = database.search_customers("L002")
+        assert [r["loan_number"] for r in results] == ["L002"]
+
+    def test_search_by_phone_substring(self, database):
+        results = database.search_customers("0002222")
+        assert [r["loan_number"] for r in results] == ["L002"]
+
+    def test_search_is_case_insensitive_for_names(self, database):
+        results = database.search_customers("ann")
+        assert [r["loan_number"] for r in results] == ["L001"]
+
+    def test_search_no_match_returns_empty(self, database):
+        assert database.search_customers("nonexistent") == []
+
+    def test_search_empty_query_returns_empty(self, database):
+        assert database.search_customers("   ") == []
+
+    def test_search_covers_any_status_not_just_waiting(self, database):
+        customer = database.get_customer(1)
+        database.update_customer_status(customer["id"], "paid")
+        results = database.search_customers("Ann")
+        assert [r["loan_number"] for r in results] == ["L001"]
+
+
+class TestCustomerEvents:
+    def test_get_customer_events_empty_when_nothing_recorded(self, database):
+        assert database.get_customer_events(1) == []
+
+    def test_get_customer_events_returns_newest_first(self, database):
+        with database.connect() as conn:
+            conn.execute(
+                "INSERT INTO customer_events (customer_id, event_type, event_timestamp) "
+                "VALUES (1, 'customer_warned', '2026-01-01T00:00:00+00:00')"
+            )
+            conn.execute(
+                "INSERT INTO customer_events (customer_id, event_type, event_timestamp) "
+                "VALUES (1, 'customer_skipped', '2026-01-02T00:00:00+00:00')"
+            )
+            conn.commit()
+
+        events = database.get_customer_events(1)
+        assert [e["event_type"] for e in events] == ["customer_skipped", "customer_warned"]
+
+    def test_get_customer_events_scoped_to_one_customer(self, database):
+        with database.connect() as conn:
+            conn.execute(
+                "INSERT INTO customer_events (customer_id, event_type, event_timestamp) "
+                "VALUES (1, 'customer_warned', '2026-01-01T00:00:00+00:00')"
+            )
+            conn.execute(
+                "INSERT INTO customer_events (customer_id, event_type, event_timestamp) "
+                "VALUES (2, 'customer_warned', '2026-01-01T00:00:00+00:00')"
+            )
+            conn.commit()
+
+        assert len(database.get_customer_events(1)) == 1
+        assert len(database.get_customer_events(2)) == 1
+
+
+class TestUpdateCustomerFields:
+    def test_update_known_fields(self, database):
+        database.update_customer_fields(1, first_name="Annie", balance="600")
+        updated = database.get_customer(1)
+        assert updated["first_name"] == "Annie"
+        assert updated["balance"] == "600"
+
+    def test_update_phone_numbers_serializes_list(self, database):
+        database.update_customer_fields(1, phone_numbers=["+15559999999", "+15558888888"])
+        updated = database.get_customer(1)
+        assert updated["phone_numbers"] == ["+15559999999", "+15558888888"]
+
+    def test_rejects_unknown_field(self, database):
+        with pytest.raises(ValueError, match="loan_number"):
+            database.update_customer_fields(1, loan_number="HACKED")
+
+    def test_rejects_status_edit(self, database):
+        """status is QueueEngine's concern (via update_customer_status),
+        not a generic field edit -- this method must not be a backdoor
+        around QueueEngine's status-transition rules."""
+        with pytest.raises(ValueError, match="status"):
+            database.update_customer_fields(1, status="paid")
+
+    def test_no_fields_is_a_safe_no_op(self, database):
+        before = database.get_customer(1)
+        database.update_customer_fields(1)
+        after = database.get_customer(1)
+        assert before == after
+
+
+class TestBlacklist:
+    def test_customer_starts_not_blacklisted(self, database):
+        assert database.get_customer(1)["is_blacklisted"] is False
+
+    def test_set_customer_blacklisted(self, database):
+        database.set_customer_blacklisted(1, True)
+        assert database.get_customer(1)["is_blacklisted"] is True
+        database.set_customer_blacklisted(1, False)
+        assert database.get_customer(1)["is_blacklisted"] is False
+
+    def test_phone_blacklist_independent_of_customer_row(self, database):
+        """The whole point of the separate table: blacklisting a phone
+        must survive the customer row it was first seen on being deleted."""
+        database.blacklist_phone("+15550001111", reason="abuse", telegram_user_id=7)
+        database.delete_customer(1)
+
+        assert database.is_phone_blacklisted("+15550001111") is True
+
+    def test_unblacklist_phone_removes_it(self, database):
+        database.blacklist_phone("+15550001111")
+        database.unblacklist_phone("+15550001111")
+        assert database.is_phone_blacklisted("+15550001111") is False
+
+    def test_blacklisting_same_phone_twice_updates_reason(self, database):
+        database.blacklist_phone("+15550001111", reason="first reason")
+        database.blacklist_phone("+15550001111", reason="updated reason")
+        with database.connect() as conn:
+            row = conn.execute(
+                "SELECT reason FROM blacklisted_phones WHERE phone = ?", ("+15550001111",)
+            ).fetchone()
+        assert row["reason"] == "updated reason"
+
+
+class TestGetCustomerRecord:
+    def test_returns_none_for_missing_customer(self, database):
+        assert database.get_customer_record(9999) is None
+
+    def test_combines_customer_notes_and_history(self, database):
+        database.set_customer_blacklisted(1, True)
+        with database.connect() as conn:
+            conn.execute(
+                "INSERT INTO customer_events (customer_id, event_type, event_timestamp, notes) "
+                "VALUES (1, 'customer_note_added', '2026-01-01T00:00:00+00:00', 'Call back after 4pm')"
+            )
+            conn.execute(
+                "INSERT INTO customer_events (customer_id, event_type, event_timestamp) "
+                "VALUES (1, 'customer_warned', '2026-01-02T00:00:00+00:00')"
+            )
+            conn.commit()
+
+        record = database.get_customer_record(1)
+
+        assert record["loan_number"] == "L001"
+        assert record["is_blacklisted"] is True
+        assert record["notes"] == [
+            {"text": "Call back after 4pm", "telegram_user_id": None, "timestamp": "2026-01-01T00:00:00+00:00"}
+        ]
+        assert [e["event_type"] for e in record["history"]] == ["customer_warned", "customer_note_added"]
+
+    def test_flags_blacklisted_phones_among_the_customers_numbers(self, database):
+        database.blacklist_phone("+15550001111")
+        record = database.get_customer_record(1)
+        assert record["blacklisted_phones"] == ["+15550001111"]
+
+    def test_no_blacklisted_phones_gives_empty_list(self, database):
+        record = database.get_customer_record(1)
+        assert record["blacklisted_phones"] == []
+
+
+class TestExtendedFinancialFields:
+    """monthly_payment, current_overdue_amount, original_loan_amount --
+    added so the operator never needs the original CRM/spreadsheet to
+    answer a customer's questions about their loan."""
+
+    def test_new_fields_default_to_empty_string(self, database):
+        customer = database.get_customer(1)
+        assert customer["monthly_payment"] == ""
+        assert customer["current_overdue_amount"] == ""
+        assert customer["original_loan_amount"] == ""
+
+    def test_new_fields_persist_through_insert(self, tmp_path):
+        db = Database(path=tmp_path / "extended.db")
+        db.insert_customers(
+            [
+                {
+                    "loan_number": "F001",
+                    "first_name": "Fin",
+                    "last_name": "Ance",
+                    "phone_numbers": ["+15550001234"],
+                    "balance": "5000",
+                    "days_overdue": "12",
+                    "monthly_payment": "250.00",
+                    "current_overdue_amount": "500.00",
+                    "original_loan_amount": "10000.00",
+                }
+            ]
+        )
+        customer = db.get_customer(1)
+        assert customer["monthly_payment"] == "250.00"
+        assert customer["current_overdue_amount"] == "500.00"
+        assert customer["original_loan_amount"] == "10000.00"
+
+    def test_primary_phone_is_first_in_list(self, database):
+        customer = database.get_customer(1)
+        assert customer["primary_phone"] == customer["phone_numbers"][0]
+
+    def test_primary_phone_empty_when_no_phones(self, tmp_path):
+        db = Database(path=tmp_path / "nophone.db")
+        db.insert_customers(
+            [
+                {
+                    "loan_number": "NP1",
+                    "first_name": "No",
+                    "last_name": "Phone",
+                    "phone_numbers": [],
+                }
+            ]
+        )
+        assert db.get_customer(1)["primary_phone"] == ""
+
+
+class TestLastEditedTimestamp:
+    def test_starts_unset(self, database):
+        assert database.get_customer(1)["last_edited_timestamp"] is None
+
+    def test_set_on_edit(self, database):
+        database.update_customer_fields(1, balance="999")
+        assert database.get_customer(1)["last_edited_timestamp"] is not None
+
+    def test_distinct_from_status_timestamp(self, database):
+        """Editing a field must not look like a call outcome, and
+        marking a call outcome must not look like a data correction."""
+        database.update_customer_status(1, "warned")
+        after_call = database.get_customer(1)
+        assert after_call["status_timestamp"] is not None
+        assert after_call["last_edited_timestamp"] is None
+
+        database.update_customer_fields(1, balance="42")
+        after_edit = database.get_customer(1)
+        assert after_edit["last_edited_timestamp"] is not None
+        # The call outcome timestamp is untouched by an unrelated edit.
+        assert after_edit["status_timestamp"] == after_call["status_timestamp"]
