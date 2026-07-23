@@ -16,10 +16,16 @@ The codebase was in better shape than a from-scratch review might
 suggest — three responsibilities were **already** correctly owned and
 needed no change at all:
 
-- **Queue, current customer, status transitions** — fully owned by
-  `QueueEngine`. Neither frontend writes customer status or
-  `queue_session` directly (Mini App's last remaining direct write was
-  closed in the previous pass via `set_active_customer`).
+- **Queue, current customer, status transitions** — mostly owned by
+  `QueueEngine`. `start_call`'s explicit-customer-id path still writes
+  `queue_session` directly via `database.update_queue_session()` rather
+  than through a `QueueEngine` method — this was previously documented
+  as "closed via `set_active_customer`," but that method does not exist
+  in `queue_engine.py`. Corrected here; see `AGENTS.md`'s "Known
+  documentation drift." Not fixed as code, since the direct-write path
+  works correctly and is covered by tests — adding a wrapper method
+  solely to match the old doc claim would be a cosmetic change with no
+  behavioral justification.
 - **Import** — `importer.py` (orchestration) / `ai_parser.py` (AI-only)
   / `validation.py` (pure, deterministic) were already cleanly split,
   and AI is already correctly isolated to the import step only — no

@@ -16,7 +16,13 @@ reasoning.
   `telegram_auth.py` validates `initData`; `telegram_user_id` flows
   through to `customer_events`.
 - ~~`start_call`'s explicit-customer-id path bypassed QueueEngine~~ —
-  fixed via `QueueEngine.set_active_customer()`.
+  **correction (this pass): not actually fixed.** This was previously
+  marked resolved "via `QueueEngine.set_active_customer()`," but that
+  method does not exist in `queue_engine.py` — confirmed by direct grep.
+  `start_call` still calls `database.update_queue_session()` directly.
+  Left as-is: the direct-write path is correct and tested; adding a
+  wrapper method now would only be to match the old (wrong) doc claim,
+  not because the architecture needs it. See `AGENTS.md`.
 - ~~Mini-App-run sessions never got finalized~~ — fixed; `get_current_session()`
   now finalizes them, with a regression test guarding the "re-polling
   spawns a new session" failure mode that fix could have introduced.
@@ -97,8 +103,13 @@ reasoning.
 9. `paid` is a real `QueueEngine` action; Telegram's `queue_ui.py` has
    no button for it — a frontend feature-parity gap, not a bug.
 10. No Telegram-side notifications for Mini App activity.
-11. `POST /call/return` exists (backend prep) but nothing calls it yet
-    — hook up when frontend work resumes.
+11. **Correction (this pass): `POST /call/return` does not exist.**
+    Previously documented as "exists (backend prep)," but confirmed
+    absent from `mini_app_api.py`'s route list. Not adding it
+    speculatively — no current caller needs it, and inventing an
+    unused endpoint just to match the old doc claim isn't justified.
+    Add for real if/when the frontend's "operator returned from a call"
+    flow actually needs a dedicated event.
 12. **No Mini App frontend UI** for search/customer-detail/edit/blacklist
     — those endpoints exist backend-only (this pass was explicitly
     scoped to avoid new UI/styling work). See `ARCHITECTURE.md` addendum.

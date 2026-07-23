@@ -19,7 +19,7 @@ new components were introduced, only clarified:
 
 | Owns | Class | Notes |
 |---|---|---|
-| Queue, current customer, status transitions | `QueueEngine` | The Mini App never writes `queue_session` or customer status directly; it calls `apply_action`, `next_customer`, `peek_next_customer`, `set_active_customer`, `pause`, `restart_call_later`. |
+| Queue, current customer, status transitions | `QueueEngine` | The Mini App never writes customer status directly; it calls `apply_action`, `next_customer`, `peek_next_customer`, `pause`, `restart_call_later`. One exception: `start_call`'s explicit-customer-id path writes `queue_session` directly via `database.update_queue_session()` rather than through a `QueueEngine` method — see `BACKLOG.md` item on this. |
 | Active session, progress, resume, completion | `SessionManager` | `MiniAppService` calls `start_current_session` / `complete_current_session`, never touches the `sessions` table directly. |
 | Analytics, history, exports | `StatisticsEngine` / `export_engine` | All event recording goes through `StatisticsEngine.record_event`; exports go through `export_engine.export_customers`. |
 | Presentation only | Mini App frontend | Receives JSON, renders it, sends user intent back as HTTP calls. It should never need to know queue/session/statistics business rules to function correctly. |
@@ -121,13 +121,14 @@ doesn't block on frontend completion.
 - **Response:** `{"ok": true, "customerId": 5, "startedAt": "2026-07-13T..."}`
 - **Errors:** `{"ok": false, "error": "No customer available"}` if the queue is empty and no id was given.
 - **Caller:** Mini App, when the operator taps "Call".
-- **Status:** ✅ implemented. Explicit-id path goes through `QueueEngine.set_active_customer` (added this pass) instead of writing `queue_session` directly.
+- **Status:** ✅ implemented. Explicit-id path writes `queue_session`
+  directly via `database.update_queue_session()` (not through a
+  `QueueEngine` method — see `BACKLOG.md`).
 
-### `POST /call/return`
-- **Purpose:** "Call Returned" event — the operator came back to the Mini App after dialing. Informational only; does not change queue/customer state (that only changes via `/call/result`).
-- **Request:** `{"customerId": "5"}`
-- **Response:** `{"ok": true, "customerId": 5}`
-- **Status:** ✅ implemented (new this pass). Not yet called by the frontend — hook up `App.tsx`'s `onReturnFromCall` to it when the frontend work resumes.
+> **Note:** `POST /call/return` was previously documented here as
+> implemented. It does not exist in `mini_app_api.py` — confirmed by
+> direct route inspection. See `BACKLOG.md` item on this. Not adding it
+> speculatively; nothing currently needs it.
 
 ### `POST /call/result`
 - **Purpose:** "Outcome Selected" event. Applies the outcome and advances the queue in one committed step.

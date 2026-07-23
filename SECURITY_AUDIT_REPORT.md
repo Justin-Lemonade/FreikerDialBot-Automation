@@ -4,9 +4,28 @@ This document summarizes the findings of a security and privacy audit of the **F
 
 ## 1. SECURITY STATUS
 
-**SAFE TO PUSH**
+**CORRECTION (verified against commit `f2e6acc`, see below) — NOT fully accurate.**
 
-The repository is safe to be published. The audit confirms that the current state of the repository does not contain hardcoded secrets, private keys, or real customer data. The project is well-structured to separate sensitive data from the codebase.
+The original audit below concluded the repository was safe to push and that
+`.gitignore` "correctly and comprehensively excludes" the `data/` directory.
+**That conclusion does not hold.** Direct inspection (`git ls-files data/`)
+shows **80 files are actually tracked under `data/`**, including `bot.log`,
+JPEG images (real-sized, 27–227 KB, Telegram file-ID-style names — likely
+genuine local screenshots swept into the initial commit, not deliberate
+test fixtures), and export files. `.gitignore` rules only prevent *new*
+files from being added to git going forward — they do nothing to untrack
+files that were already committed before the rule existed, which is what
+happened here (these were added in the very first commit).
+
+The export/log content itself does appear to be synthetic test data (e.g.
+"Ann Owens", 555-prefixed phone numbers), not real customer PII — but the
+JPEGs were not opened/verified and should not be assumed safe without
+review. See `SETUP_AFTER_CLAUDE.md` for the required action.
+
+The rest of this document (secrets handling, `.env` usage) still holds —
+only the `data/` exclusion and "clean git history" claims were wrong.
+
+**Original status line (inaccurate, kept for reference):** ~~SAFE TO PUSH~~
 
 ## 2. SECRETS FOUND
 
@@ -22,9 +41,17 @@ The repository is safe to be published. The audit confirms that the current stat
 
 ## 4. GIT HISTORY REVIEW
 
-- **Findings:** The repository's Git history is clean.
-- **Status:** **SAFE**.
-- **Details:** An inspection of the Git log shows a shallow history, primarily consisting of an initial commit that added the project in its current, secure state. No evidence was found of secrets being committed and later removed.
+- **Findings (CORRECTED, commit `f2e6acc`):** The initial commit added
+  **80 files under `data/`** — logs, exports, and JPEG images — despite
+  `.gitignore` listing `/data/` as excluded. The exclusion rule was
+  evidently added after (or without regard to) those files already being
+  staged, so it has no retroactive effect. No secrets or credentials were
+  found in git history — that part of the original finding holds — but
+  the "clean" characterization was incomplete. See `SETUP_AFTER_CLAUDE.md`
+  for the required remediation (git history rewrite requires your
+  decision and cannot be done unilaterally).
+- **Status:** Secrets: SAFE. Tracked operational data: **NOT SAFE**,
+  action required.
 
 ## 5. FILES EXCLUDED FROM GIT
 
@@ -55,8 +82,13 @@ While the repository is safe to push, the following actions and considerations a
 4.  **Complete the License:**
     - The `README.md` file contains the text `[Add your license here]`. You should choose and add an appropriate open-source license before publishing.
 
-## 7. FINAL VERDICT
+## 7. FINAL VERDICT (CORRECTED)
 
-**SAFE TO PUSH**
+**Secrets: SAFE. Tracked `data/` contents: ACTION REQUIRED.**
 
-The repository adheres to best practices for secret management and the separation of code from data. No modifications were required as the project was already in a secure state for public-facing code hosting.
+No hardcoded secrets or credentials were found — that part of the original
+verdict holds. However, the repository already has 80 files tracked under
+`data/` (logs, exports, JPEGs) that should not be in version control
+regardless of whether their current content is sensitive. See
+`SETUP_AFTER_CLAUDE.md` for the required remediation steps, which involve
+a git history decision only you can make.
