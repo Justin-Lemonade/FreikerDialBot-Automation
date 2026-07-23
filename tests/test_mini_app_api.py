@@ -10,7 +10,9 @@ from urllib.parse import quote
 
 import pytest
 
+from backend import build_backend
 from config import Settings
+from database import Database
 from mini_app_api import MiniAppAPI, MiniAppService, create_service
 
 TEST_BOT_TOKEN = "123456:TEST-TOKEN-FOR-AUTH-TESTS-ONLY"
@@ -24,12 +26,14 @@ def authenticated_api_server(tmp_path: Path):
     real-settings load), so auth/authorization tests are self-contained
     and don't depend on real environment values."""
     db_path = tmp_path / "mini_app_auth.db"
+    database = Database(path=db_path)
     settings = Settings(
         telegram_bot_token=TEST_BOT_TOKEN,
         openai_api_key=None,
         admin_user_ids=frozenset({TEST_ADMIN_USER_ID}),
     )
-    service = MiniAppService(db_path=db_path, bot_token=TEST_BOT_TOKEN, settings=settings)
+    backend = build_backend(settings=settings, database=database)
+    service = MiniAppService(backend=backend)
     api = MiniAppAPI(service)
     server = api.create_server(host="127.0.0.1", port=0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -46,7 +50,9 @@ def authenticated_api_server(tmp_path: Path):
 @pytest.fixture()
 def api_server(tmp_path: Path):
     db_path = tmp_path / "mini_app.db"
-    service = create_service(db_path=db_path)
+    database = Database(path=db_path)
+    backend = build_backend(database=database)
+    service = create_service(backend=backend)
     api = MiniAppAPI(service)
     server = api.create_server(host="127.0.0.1", port=0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

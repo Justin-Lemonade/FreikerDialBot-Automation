@@ -17,31 +17,38 @@ interface Props {
 export const Call = ({ customer, outcome, isSubmitting, durationLabel, onStartCall, onOutcome, onOpenNotes, onReturn }: Props) => {
   return (
     <div className="space-y-4">
-      <CustomerCard customer={customer} indexLabel={`17 / 48`} />
+      {/* Current Customer -- dominates the screen */}
+      <CustomerCard customer={customer} />
 
+      {/* Primary Actions */}
       <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-4">
         <div className="mb-3 flex items-center justify-between">
-          <div>
-            <p className="text-sm text-slate-400">Call status</p>
-            <p className="text-lg font-semibold">{outcome ? 'Call finished' : 'Ready to dial'}</p>
-          </div>
+          <p className="text-sm font-semibold text-slate-300">{outcome ? 'Call finished' : 'Ready to dial'}</p>
           <div className="rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">{durationLabel}</div>
         </div>
-
-        <CallButton label="📞 Call" onClick={onStartCall} />
+        <CallButton label="📞 Call" onClick={onStartCall} disabled={!customer} />
       </div>
 
       <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="font-semibold">Outcome</p>
-          <button onClick={onOpenNotes} className="text-sm text-emerald-300">Add Note</button>
-        </div>
-        <OutcomeButtons onOutcome={onOutcome} disabled={isSubmitting} />
+        <p className="mb-3 text-sm font-semibold text-slate-300">Outcome</p>
+        <OutcomeButtons onOutcome={onOutcome} disabled={isSubmitting || !customer} />
       </div>
 
-      <button onClick={onReturn} className="w-full rounded-[28px] border border-white/10 bg-slate-900 px-5 py-4 text-lg font-semibold">
-        Return from call
-      </button>
+      {/* Secondary Actions */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={onOpenNotes}
+          className="min-h-[48px] rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-semibold text-emerald-300 active:scale-[0.98]"
+        >
+          📝 Add Note
+        </button>
+        <button
+          onClick={onReturn}
+          className="min-h-[48px] rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-semibold active:scale-[0.98]"
+        >
+          Return from Call
+        </button>
+      </div>
     </div>
   );
 };

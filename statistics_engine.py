@@ -63,7 +63,7 @@ class StatisticsEngine:
         customer: dict[str, Any] | None = None,
         telegram_user_id: int | None = None,
         notes: str | None = None,
-        duration: int | None = None,
+        duration_seconds: int | None = None,
     ) -> int:
         if event_type not in EVENT_TYPES:
             raise ValueError(f"Unsupported event type: {event_type}")
@@ -95,7 +95,7 @@ class StatisticsEngine:
                     timestamp.isoformat(),
                     telegram_user_id,
                     notes,
-                    duration,
+                    duration_seconds,
                 ),
             )
             self._update_daily_statistics(

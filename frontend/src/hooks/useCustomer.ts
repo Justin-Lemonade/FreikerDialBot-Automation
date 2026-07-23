@@ -1,53 +1,51 @@
 import { useCallback, useState } from 'react';
-import { api } from '../api/client';
-import type { Customer } from '../types';
+import { api, ApiError } from '../api/client';
+import type { Customer, CustomerRecord } from '../types';
 
-const defaultCustomer: Customer = {
-  id: '123456',
-  name: 'John Smith',
-  loanNumber: 'Loan #123456',
-  balance: 550,
-  daysLate: 18,
-  phone: '+15551234567',
-  notes: ['Wife answered yesterday', 'Requested callback after 4 PM'],
-};
-
-function isWrappedCustomer(data: any): data is { customer: Customer } {
-  return data && typeof data === 'object' && 'customer' in data;
-}
-
+/**
+ * Deliberately thin: useSession already carries currentCustomer on every
+ * poll (GET /session/current embeds it), so most screens should read
+ * customer data straight off session.currentCustomer rather than using
+ * this hook at all. This exists only for the two cases that genuinely
+ * need an independent fetch:
+ *   1. advancing the queue via /session/next, which returns a customer
+ *      object directly and needs somewhere to put it before the next
+ *      session poll catches up
+ *   2. looking at a customer who is NOT the current one (search results,
+ *      "More Info" on a past customer) via getCustomerRecord
+ */
 export const useCustomer = () => {
-  const [customer, setCustomer] = useState<Customer | null>(defaultCustomer);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [record, setRecord] = useState<CustomerRecord | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const refreshCustomer = useCallback(async () => {
+  const setFromSession = useCallback((next: Customer | null) => {
+    setCustomer(next);
+  }, []);
+
+  const advanceQueue = useCallback(async () => {
     try {
-      const data = await api.getCurrentCustomer();
-      const payload = isWrappedCustomer(data) ? data.customer : data;
-      setCustomer(payload as Customer);
-    } catch {
-      setCustomer(defaultCustomer);
+      const result = await api.advanceSession();
+      setCustomer(result.customer);
+      setError(null);
+      return result;
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not advance the queue.');
+      throw err;
     }
   }, []);
 
-  const nextCustomer = useCallback(async () => {
+  const loadRecord = useCallback(async (customerId: string) => {
     try {
-      const data = await api.nextCustomer();
-      const payload = isWrappedCustomer(data) ? data.customer : data;
-      setCustomer(payload as Customer);
-    } catch {
-      setCustomer(defaultCustomer);
+      const next = await api.getCustomerRecord(customerId);
+      setRecord(next);
+      setError(null);
+      return next;
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not load that customer.');
+      throw err;
     }
   }, []);
 
-  const prefetchCustomer = useCallback(async () => {
-    try {
-      const data = await api.nextCustomer();
-      const payload = isWrappedCustomer(data) ? data.customer : data;
-      setCustomer((current) => current ?? (payload as Customer));
-    } catch {
-      // no-op
-    }
-  }, []);
-
-  return { customer, refreshCustomer, nextCustomer, prefetchCustomer };
+  return { customer, record, error, setFromSession, advanceQueue, loadRecord, setRecord };
 };

@@ -1,62 +1,78 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        ready: () => void;
-        expand: () => void;
-        setHeaderColor: (color: string) => void;
-        setBackgroundColor: (color: string) => void;
-        isExpanded: boolean;
-        initDataUnsafe?: { user?: { id?: number } };
-        themeParams?: Record<string, string>;
-        HapticFeedback?: {
-          impactOccurred: (style: string) => void;
-        };
-        showAlert: (message: string) => void;
-        BackButton?: {
-          show: () => void;
-          hide: () => void;
-          onClick: (callback: () => void) => void;
-        };
-      };
-    };
-  }
-}
-
+/**
+ * Thin wrapper over window.Telegram.WebApp (injected by the
+ * telegram-web-app.js script tag in index.html). Every call is guarded
+ * for the "not actually running inside Telegram" case (e.g. local
+ * browser testing during development) so the rest of the app never has
+ * to null-check window.Telegram itself.
+ */
 export const useTelegram = () => {
   const [isReady, setIsReady] = useState(false);
+  const backButtonCallbackRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const webApp = window.Telegram?.WebApp;
-    if (!webApp) return;
-
-    webApp.ready();
-    webApp.expand();
-    webApp.setHeaderColor?.('#0f172a');
-    webApp.setBackgroundColor?.('#0f172a');
-    setIsReady(true);
+    if (webApp) {
+      webApp.ready();
+      setIsReady(true);
+    }
   }, []);
 
-  const expand = () => window.Telegram?.WebApp?.expand();
-  const haptic = (style: 'light' | 'medium' | 'success') => {
-    const feedback = window.Telegram?.WebApp?.HapticFeedback;
-    if (feedback) {
-      feedback.impactOccurred(style === 'success' ? 'rigid' : style === 'medium' ? 'medium' : 'light');
-    }
-  };
-  const setBackButton = (visible: boolean, callback?: () => void) => {
+  const expand = useCallback(() => {
+    window.Telegram?.WebApp?.expand();
+  }, []);
+
+  const setBackButton = useCallback((visible: boolean, onClick: () => void) => {
     const backButton = window.Telegram?.WebApp?.BackButton;
     if (!backButton) return;
+
+    if (backButtonCallbackRef.current) {
+      backButton.offClick(backButtonCallbackRef.current);
+    }
+
     if (visible) {
+      backButton.onClick(onClick);
+      backButtonCallbackRef.current = onClick;
       backButton.show();
-      if (callback) backButton.onClick(callback);
     } else {
+      backButtonCallbackRef.current = null;
       backButton.hide();
     }
-  };
-  const showAlert = (message: string) => window.Telegram?.WebApp?.showAlert?.(message);
+  }, []);
 
-  return { isReady, expand, haptic, setBackButton, showAlert };
+  const haptic = useCallback((style: 'light' | 'medium' | 'heavy' | 'success' | 'error' | 'warning') => {
+    const feedback = window.Telegram?.WebApp?.HapticFeedback;
+    if (!feedback) return;
+    if (style === 'success' || style === 'error' || style === 'warning') {
+      feedback.notificationOccurred(style);
+    } else {
+      feedback.impactOccurred(style);
+    }
+  }, []);
+
+  const showAlert = useCallback((message: string) => {
+    const webApp = window.Telegram?.WebApp;
+    if (webApp) {
+      webApp.showAlert(message);
+    } else {
+      // Local/browser fallback so this doesn't silently no-op during dev.
+      window.alert(message);
+    }
+  }, []);
+
+  const showConfirm = useCallback((message: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const webApp = window.Telegram?.WebApp;
+      if (webApp) {
+        webApp.showConfirm(message, (confirmed) => resolve(confirmed));
+      } else {
+        resolve(window.confirm(message));
+      }
+    });
+  }, []);
+
+  const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id ?? null;
+
+  return { isReady, expand, setBackButton, haptic, showAlert, showConfirm, userId };
 };

@@ -185,17 +185,13 @@ class Database:
         for column, column_type in _CUSTOMER_MIGRATION_COLUMNS.items():
             if column not in columns:
                 conn.execute(f"ALTER TABLE customers ADD COLUMN {column} {column_type}")
-        # Migrate customer_events: add duration_seconds if missing
-        event_table_exists = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='customer_events'"
-        ).fetchone()
-        if event_table_exists:
-            event_cols = {
-                row["name"]
-                for row in conn.execute("PRAGMA table_info(customer_events)").fetchall()
-            }
-            if "duration_seconds" not in event_cols:
-                conn.execute("ALTER TABLE customer_events ADD COLUMN duration_seconds INTEGER")
+
+        event_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(customer_events)").fetchall()
+        }
+        if event_columns and "duration_seconds" not in event_columns:
+            conn.execute("ALTER TABLE customer_events ADD COLUMN duration_seconds INTEGER")
 
     def insert_customers(self, customers: list[dict[str, Any]], status: str = "waiting") -> int:
         """Insert new customers, or refresh ones reappearing from a prior
@@ -427,20 +423,38 @@ class Database:
             ).fetchone()
             return self._customer_from_row(row) if row else None
 
-    def get_next_actionable_customer(self) -> dict[str, Any] | None:
+    def get_next_actionable_customer(self, exclude_ids: set[int] | None = None) -> dict[str, Any] | None:
         """Like get_next_waiting_customer, but also surfaces 'needs_review'
         rows (imported but missing name/phone) so the operator gets a
         chance to Skip or Delete them instead of them being silently
-        stuck forever."""
+        stuck forever.
+
+        exclude_ids lets a caller peek past specific rows (e.g. a
+        blacklisted customer) without mutating anything -- the row stays
+        'waiting', it's just excluded from *this* query's result.
+        """
         with self.connect() as conn:
-            row = conn.execute(
-                """
-                SELECT * FROM customers
-                WHERE status IN ('waiting', 'needs_review') AND is_blacklisted = 0
-                ORDER BY import_timestamp ASC, id ASC
-                LIMIT 1
-                """
-            ).fetchone()
+            if exclude_ids:
+                placeholders = ", ".join("?" for _ in exclude_ids)
+                row = conn.execute(
+                    f"""
+                    SELECT * FROM customers
+                    WHERE status IN ('waiting', 'needs_review')
+                      AND id NOT IN ({placeholders})
+                    ORDER BY import_timestamp ASC, id ASC
+                    LIMIT 1
+                    """,
+                    tuple(exclude_ids),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT * FROM customers
+                    WHERE status IN ('waiting', 'needs_review')
+                    ORDER BY import_timestamp ASC, id ASC
+                    LIMIT 1
+                    """
+                ).fetchone()
             return self._customer_from_row(row) if row else None
 
     def update_customer_status(self, customer_id: int, status: str) -> None:
@@ -606,6 +620,18 @@ class Database:
                 "SELECT 1 FROM blacklisted_phones WHERE phone = ?", (phone,)
             ).fetchone()
             return row is not None
+
+    def first_non_blacklisted_phone(self, phone_numbers: list[str]) -> str:
+        """Pick the phone to actually display/dial: the first number in
+        the list that isn't blacklisted, falling back to the first
+        number at all if every number is blacklisted (still show
+        *something* rather than silently blank the field)."""
+        if not phone_numbers:
+            return ""
+        for phone in phone_numbers:
+            if not self.is_phone_blacklisted(phone):
+                return phone
+        return phone_numbers[0]
 
     def blacklist_phone(
         self, phone: str, reason: str | None = None, telegram_user_id: int | None = None

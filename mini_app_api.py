@@ -3,55 +3,44 @@
 from __future__ import annotations
 
 import json
-import mimetypes
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
-from config import BASE_DIR, Settings
 from backend import Backend, build_backend
+from config import BASE_DIR, Settings, load_settings
 from database import Database
-from export_engine import export_customers, ExportError
-from telegram_auth import validate_init_data, extract_user_id, TelegramAuthError
-
-# Where the built frontend (index.html + /assets/*) lives. The compiled
-# bundle already exists at BASE_DIR (index.html, index-*.js, index-*.css)
-# -- this just serves it from the same process/port as the API instead
-# of requiring a separate static file server, so a single
-# `python mini_app_api.py` is enough to make the Mini App reachable.
-FRONTEND_DIR = BASE_DIR
+from export_engine import EXPORTERS, ExportError, export_customers
+from queue_engine import QueueEngine
+import security
+from session_manager import SessionManager
+from statistics_engine import StatisticsEngine
+from telegram_auth import TelegramAuthError, extract_user_id, validate_init_data
 
 
 class MiniAppService:
-    """Thin adapter over the existing queue/session/statistics classes.
-
-    Wired to the shared Backend (backend.py) rather than constructing
-    Database/StatisticsEngine/SessionManager/QueueEngine itself -- this
-    used to duplicate exactly the sequence bot.py builds too, which is
-    the duplication backend.py exists to eliminate. A `database`/`db_path`
-    override is still accepted (tests want an isolated temp-file
-    Database), in which case a matching Backend is built around it.
-    """
-    bot_token: str | None
+    """Thin adapter over the existing queue/session/statistics classes."""
 
     def __init__(
         self,
-        database: Database | None = None,
-        db_path: str | Path | None = None,
         bot_token: str | None = None,
         settings: Settings | None = None,
+        backend: Backend | None = None,
     ):
-        if database is None and db_path is not None:
-            database = Database(Path(db_path))
-        backend: Backend = build_backend(settings=settings, database=database)
-        self.backend = backend
-        self.database = backend.database
-        self.statistics = backend.statistics
-        self.session_manager = backend.session_manager
-        self.queue_engine = backend.queue_engine
-        self.bot_token = bot_token or (backend.settings.telegram_bot_token if backend.settings else None)
+        self.backend = backend or build_backend(settings=settings)
+        self.database = self.backend.database
+        self.statistics = self.backend.statistics
+        self.session_manager = self.backend.session_manager
+        self.queue_engine = self.backend.queue_engine
+
+        # Settings drives auth (bot_token for initData verification,
+        # admin_user_ids for /export). Falls back to real environment
+        # settings if not explicitly provided, but tests construct their
+        # own Settings so they never depend on real env values.
+        self.settings = self.backend.settings
+        self.bot_token = bot_token or self.settings.telegram_bot_token
 
     def _format_duration(self, seconds: int) -> str:
         if seconds < 60:
@@ -65,22 +54,17 @@ class MiniAppService:
         if not customer:
             return None
         phone_numbers = customer.get("phone_numbers") or []
-        phone = ""
-        if isinstance(phone_numbers, list):
-            for p in phone_numbers:
-                if not self.database.is_phone_blacklisted(p):
-                    phone = p
-                    break
+        phone = self.database.first_non_blacklisted_phone(phone_numbers) if isinstance(phone_numbers, list) else ""
         notes = []
         if customer.get("warning_note"):
             notes.append(customer["warning_note"])
         return {
             "id": str(customer["id"]),
             "name": f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip(),
-            "loanNumber": customer.get("loan_number", ""),
+            "loanNumber": customer.get("loan_number", ""), # Duplicated below, but keep for compatibility
             "balance": customer.get("balance", ""),
             "daysLate": customer.get("days_overdue", ""),
-            "monthlyPayment": customer.get("monthly_payment", ""),
+            "monthlyPayment": customer.get("monthly_payment", ""), # Corrected from ""
             "currentOverdueAmount": customer.get("current_overdue_amount", ""),
             "originalLoanAmount": customer.get("original_loan_amount", ""),
             "phone": phone,
@@ -89,34 +73,48 @@ class MiniAppService:
             "first_name": customer.get("first_name", ""),
             "last_name": customer.get("last_name", ""),
             "status": customer.get("status", "waiting"),
+            "isBlacklisted": bool(customer.get("is_blacklisted", False)),
         }
 
     def _active_customer(self) -> dict[str, Any] | None:
+        """Read-only: returns the customer currently committed as
+        'current' in queue_session, WITHOUT ever calling next_customer()
+        (that mutates). If no customer is committed yet, callers should
+        use peek_next_customer() instead of assuming one exists here."""
         queue_state = self.database.get_queue_session()
         current_id = queue_state.get("current_customer_id")
         if current_id:
             customer = self.database.get_customer(int(current_id))
-            if customer:
+            if customer and not customer.get("is_blacklisted"):
                 return customer
         return None
 
     def get_current_session(self) -> dict[str, Any]:
         progress = self.queue_engine.status()
         session = self.session_manager.current_session()
-        customer = self._active_customer()
-        if customer is None and progress.total_customers:
-            customer = self.database.get_next_actionable_customer()
+        queue_complete = bool(progress.total_customers) and progress.remaining == 0
+
+        if session and queue_complete:
+            # Finalize now, before deciding whether to show a customer or
+            # spawn anything -- this is what stops a second /session/current
+            # poll from seeing "no active session" and starting a new one.
+            self.session_manager.complete_current_session()
+            session = self.session_manager.current_session()  # None: it's completed now
+
+        customer = None if queue_complete else self._active_customer()
+        if customer is None and not queue_complete and progress.total_customers:
+            customer = self.queue_engine.peek_next_customer()
 
         snapshot = self.statistics.snapshot()
         today_stats = snapshot.today
         total_customers = progress.total_customers if progress.total_customers else int(session["total_customers"]) if session else 0
         session_id = int(session["id"]) if session else None
-        if session_id is None and total_customers and progress.remaining > 0:
+        if session_id is None and total_customers and not queue_complete:
             self.session_manager.start_current_session()
             session = self.session_manager.current_session()
             session_id = int(session["id"]) if session else None
         average_seconds = snapshot.average_seconds_per_customer
-        completed = bool(session and session.get("status") == "completed") or (progress.total_customers and progress.remaining == 0)
+        completed = queue_complete or bool(session and session.get("status") == "completed")
 
         return {
             "sessionId": session_id,
@@ -136,13 +134,12 @@ class MiniAppService:
         }
 
     def get_current_customer(self) -> dict[str, Any] | None:
-        """Peek at the next customer without committing anything to DB."""
         customer = self._active_customer()
         if customer is None:
-            customer = self.database.get_next_actionable_customer()
+            customer = self.queue_engine.peek_next_customer()
         return self._customer_payload(customer)
 
-    def start_call(self, customer_id: int | None = None, telegram_user_id: int | None = None) -> dict[str, Any]:
+    def start_call(self, customer_id: int | None = None) -> dict[str, Any]:
         if customer_id is None:
             customer = self.get_current_customer()
             if customer is None:
@@ -151,54 +148,59 @@ class MiniAppService:
 
         self.session_manager.start_current_session()
         self.database.update_queue_session(current_customer_id=customer_id)
-        self.statistics.record_event("queue_started", session_id=self.session_manager.current_session()["id"] if self.session_manager.current_session() else None, customer=self.database.get_customer(customer_id), telegram_user_id=telegram_user_id)
+        self.statistics.record_event("queue_started", session_id=self.session_manager.current_session()["id"] if self.session_manager.current_session() else None, customer=self.database.get_customer(customer_id))
         return {"ok": True, "customerId": customer_id, "startedAt": datetime.now(timezone.utc).isoformat()}
 
-    def submit_call_result(self, customer_id: int | None, outcome: str, duration: int | None = None, telegram_user_id: int | None = None) -> dict[str, Any]:
+    def submit_call_result(
+        self,
+        customer_id: int | None,
+        outcome: str,
+        duration: int | None = None,
+        telegram_user_id: int | None = None,
+    ) -> dict[str, Any]:
+        """The single write path for outcome buttons (Contacted/Didn't
+        Answer/Wrong Number/Skip). Routes through QueueEngine.apply_action
+        -- the exact same method the Telegram bot uses -- so both
+        frontends share one source of truth for status transitions,
+        the needs_review guard, and event-type mapping. This also
+        advances the queue and returns the next customer in the same
+        call, so the frontend never needs a separate "advance" request.
+        """
         if customer_id is None:
             return {"ok": False, "error": "customerId is required"}
 
         status = self._map_outcome(outcome)
+        if status not in {"warned", "call_later", "skip", "invalid_number"}:
+            return {"ok": False, "error": f"Unsupported outcome: {outcome}"}
+
         self.session_manager.start_current_session()
-        self.database.update_customer_status(int(customer_id), status)
-        self.database.update_queue_session(current_customer_id=int(customer_id))
-        event_type = "customer_warned" if status == "warned" else "customer_call_later" if status == "call_later" else "customer_marked_invalid" if status == "invalid_number" else "customer_skipped"
-        self.statistics.record_event(
-            event_type,
-            session_id=self.session_manager.current_session()["id"] if self.session_manager.current_session() else None,
-            customer=self.database.get_customer(int(customer_id)),
-            notes=outcome,
-            duration=duration,
+
+        selection = self.queue_engine.apply_action(
+            int(customer_id),
+            status,
             telegram_user_id=telegram_user_id,
+            duration_seconds=int(duration) if duration is not None else None,
         )
-        # Advance to next customer
-        next_selection = self.queue_engine.next_customer()
-        next_customer = self._customer_payload(next_selection.customer) if next_selection and next_selection.customer else None
-        # Complete session if queue is done
-        session = self.session_manager.current_session()
-        if session and next_selection and next_selection.complete:
-            self.session_manager.complete_current_session()
-            session = self.session_manager.most_recent_session()
-        session_data = self.get_current_session() if session else {"completed": True}
+
+        session_payload = self.get_current_session()
         return {
             "ok": True,
             "customerId": customer_id,
             "outcome": outcome,
             "status": status,
             "duration": duration,
-            "nextCustomer": next_customer,
-            "session": session_data,
+            "nextCustomer": self._customer_payload(selection.customer),
+            "session": session_payload,
         }
 
-    def save_note(self, customer_id: int | None, note: str, telegram_user_id: int | None = None) -> dict[str, Any]:
+    def save_note(self, customer_id: int | None, note: str) -> dict[str, Any]:
         if customer_id is None or not note or not note.strip():
             return {"ok": False, "error": "customerId and note are required"}
         self.statistics.record_event(
-            "customer_note_added",
+            "customer_warned",
             session_id=self.session_manager.current_session()["id"] if self.session_manager.current_session() else None,
             customer=self.database.get_customer(int(customer_id)),
             notes=note.strip(),
-            telegram_user_id=telegram_user_id,
         )
         return {"ok": True, "customerId": customer_id, "note": note.strip()}
 
@@ -208,63 +210,6 @@ class MiniAppService:
             "customer": self._customer_payload(selection.customer),
             "session": self.get_current_session(),
         }
-
-    def pause_queue(self) -> dict[str, Any]:
-        self.database.update_queue_session(is_paused=1)
-        return {"paused": True}
-
-    def resume_queue(self) -> dict[str, Any]:
-        self.database.update_queue_session(is_paused=0)
-        return {"paused": False}
-
-    def call_back(self) -> dict[str, Any]:
-        """Reset all call_later customers back to waiting."""
-        self.queue_engine.restart_call_later()
-        return {"ok": True}
-
-    def get_upcoming_customer(self) -> dict[str, Any] | None:
-        """Peek at the next customer after the current active one."""
-        # Get the customer after the currently active one
-        queue_state = self.database.get_queue_session()
-        current_id = queue_state.get("current_customer_id")
-        customers = self.database.get_all_customers()
-        waiting = [c for c in customers if c["status"] == "waiting" and not c.get("is_blacklisted")]
-        if not waiting:
-            return None
-        if current_id:
-            # Find the next after current
-            ids = [c["id"] for c in waiting]
-            try:
-                idx = ids.index(int(current_id))
-                if idx + 1 < len(waiting):
-                    return self._customer_payload(waiting[idx + 1])
-            except ValueError:
-                pass
-        return self._customer_payload(waiting[0]) if waiting else None
-
-    def search_customers(self, query: str, limit: int = 10) -> dict[str, Any]:
-        results = self.database.search_customers(query, limit=limit)
-        return {"results": [self._customer_payload(c) or {} for c in results]}
-
-    def get_customer_record(self, customer_id: int) -> dict[str, Any] | None:
-        return self.database.get_customer_record(customer_id)
-
-    def edit_customer(self, customer_id: int, fields: dict) -> dict[str, Any]:
-        self.database.update_customer_fields(customer_id, **fields)
-        customer = self.database.get_customer(customer_id)
-        return {"ok": True, "customer": customer}
-
-    def set_customer_blacklisted(self, customer_id: int, blacklisted: bool) -> dict[str, Any]:
-        self.database.set_customer_blacklisted(customer_id, blacklisted)
-        customer = self.database.get_customer(customer_id)
-        return {"customer": {"id": str(customer["id"]), "isBlacklisted": bool(customer["is_blacklisted"])}}
-
-    def set_phone_blacklisted(self, phone: str, blacklisted: bool, reason: str | None = None) -> dict[str, Any]:
-        if blacklisted:
-            self.database.blacklist_phone(phone, reason=reason)
-        else:
-            self.database.unblacklist_phone(phone)
-        return {"phone": phone, "blacklisted": blacklisted}
 
     def get_statistics(self) -> dict[str, Any]:
         snapshot = self.statistics.snapshot()
@@ -307,6 +252,117 @@ class MiniAppService:
             return "0%"
         return f"{round((contacted / total) * 100)}%"
 
+    def pause_queue(self, telegram_user_id: int | None = None) -> dict[str, Any]:
+        self.queue_engine.pause(telegram_user_id=telegram_user_id)
+        return {"ok": True, "paused": True}
+
+    def call_back(self, telegram_user_id: int | None = None) -> dict[str, Any]:
+        """Requeue every 'call_later' customer -- the Mini App equivalent
+        of the bot's 'Call Back' completion-screen button. Reuses
+        QueueEngine.restart_call_later() rather than reimplementing the
+        requeue rule."""
+        selection = self.queue_engine.restart_call_later(telegram_user_id=telegram_user_id)
+        return {
+            "ok": True,
+            "customer": self._customer_payload(selection.customer),
+            "session": self.get_current_session(),
+        }
+
+    def queue_upcoming(self) -> dict[str, Any] | None:
+        """Preview the customer after the current one, without touching
+        queue state -- used for a "who's next" glance, not to be confused
+        with the current customer itself."""
+        current = self._active_customer()
+        current_id = current["id"] if current else None
+        exclude_ids = {current_id} if current_id else set()
+        upcoming = self.database.get_next_actionable_customer(exclude_ids=exclude_ids or None)
+        while upcoming and upcoming.get("is_blacklisted"):
+            exclude_ids.add(upcoming["id"])
+            upcoming = self.database.get_next_actionable_customer(exclude_ids=exclude_ids)
+        return self._customer_payload(upcoming)
+
+    def search_customers(self, query: str) -> dict[str, Any]:
+        results = self.database.search_customers(query)
+        return {"results": [self._customer_payload(customer) for customer in results]}
+
+    def get_customer_record(self, customer_id: int) -> dict[str, Any] | None:
+        record = self.database.get_customer_record(customer_id)
+        if record is None:
+            return None
+        payload = self._customer_payload(record) or {}
+        payload["notes"] = record.get("notes", [])
+        payload["history"] = record.get("history", [])
+        payload["blacklisted_phones"] = record.get("blacklisted_phones", [])
+        return payload
+
+    def edit_customer(
+        self, customer_id: int, fields: dict[str, Any], telegram_user_id: int | None = None
+    ) -> dict[str, Any]:
+        """Field edits route through QueueEngine.edit_customer -- the same
+        method /edit uses on Telegram -- so both frontends share one audit
+        trail and one 'only write what actually changed' rule."""
+        updated = self.queue_engine.edit_customer(
+            customer_id, telegram_user_id=telegram_user_id, **fields
+        )
+        if updated is None:
+            return {"ok": False, "error": "Customer not found"}
+        return {"ok": True, "customer": self._customer_payload(updated)}
+
+    def set_customer_blacklist(
+        self, customer_id: int, blacklisted: bool, telegram_user_id: int | None = None
+    ) -> dict[str, Any]:
+        updated = self.queue_engine.blacklist_customer(
+            customer_id, blacklisted, telegram_user_id=telegram_user_id
+        )
+        if updated is None:
+            return {"ok": False, "error": "Customer not found"}
+        return {"ok": True, "customer": self._customer_payload(updated)}
+
+    def set_phone_blacklist(
+        self,
+        phone: str,
+        blacklisted: bool,
+        reason: str | None = None,
+        telegram_user_id: int | None = None,
+    ) -> dict[str, Any]:
+        if blacklisted:
+            self.queue_engine.blacklist_phone(phone, reason=reason, telegram_user_id=telegram_user_id)
+        else:
+            self.queue_engine.unblacklist_phone(phone, telegram_user_id=telegram_user_id)
+        return {"ok": True, "phone": phone, "blacklisted": blacklisted}
+
+    def export(self, export_format: str, telegram_user_id: int | None = None) -> tuple[bytes, str, str] | dict[str, Any]:
+        """Mirrors admin_commands.export(): same source data, same
+        export_engine call, same admin_action audit event -- just
+        returned as bytes for an HTTP response instead of a Telegram
+        document attachment. Caller (the HTTP handler) is responsible
+        for the admin authorization check before this runs."""
+        customers = self.database.get_all_customers()
+        if not customers:
+            return {"ok": False, "error": "No customers loaded"}
+
+        session = self.session_manager.current_session()
+        session_id = session["id"] if session else None
+
+        try:
+            file_path: Path = export_customers(customers, session_id, export_format)
+        except ExportError as exc:
+            return {"ok": False, "error": str(exc)}
+
+        content_type = {
+            "csv": "text/csv",
+            "json": "application/json",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }.get(export_format, "application/octet-stream")
+
+        body = file_path.read_bytes()
+        self.statistics.record_event(
+            "admin_action",
+            telegram_user_id=telegram_user_id,
+            notes=f"export:{export_format}",
+        )
+        return body, content_type, file_path.name
+
     def _record_event(self, event_type: str, *, customer_id: int | None = None, notes: str | None = None, duration: int | None = None) -> None:
         session = self.session_manager.current_session()
         with self.database.connect() as conn:
@@ -338,7 +394,6 @@ class MiniAppService:
 
 class MiniAppRequestHandler(BaseHTTPRequestHandler):
     service: MiniAppService | None = None
-    telegram_user_id: int | None = None
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(200)
@@ -358,191 +413,224 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
             self._json(500, {"error": "service not configured"})
             return
 
-        auth_header = self.headers.get("Authorization")
-        if auth_header and auth_header.lower().startswith("tma "):
-            try:
-                validated_data = validate_init_data(auth_header[4:], self.service.bot_token or "")
-                self.telegram_user_id = extract_user_id(validated_data)
-            except TelegramAuthError as e:
-                self._json(401, {"error": "unauthorized", "details": str(e)})
-                return
-
         parsed = urlparse(self.path)
         path = parsed.path
-        method = self.command.upper()
-        body = self._read_body()
 
-        api_path = path[4:] if path.startswith("/api/") else (path if path != "/api" else "/")
-
-        if api_path == "/session/current" and method == "GET":
-            self._json(200, self.service.get_current_session())
+        if self._api_request(path, parsed.query, self.command.upper()):
             return
-        if api_path == "/customer/current" and method == "GET":
-            self._json(200, self.service.get_current_customer() or {})
-            return
-        if api_path == "/statistics" and method == "GET":
-            self._json(200, self.service.get_statistics())
-            return
-        if api_path == "/session/next" and method == "POST":
-            self._json(200, self.service.next_customer())
-            return
-        if api_path == "/call/start" and method == "POST":
-            payload = self._parse_json(body)
-            customer_id = payload.get("customerId") or payload.get("customer_id")
-            self._json(200, self.service.start_call(customer_id=int(customer_id) if customer_id is not None else None, telegram_user_id=self.telegram_user_id))
-            return
-        if api_path == "/call/result" and method == "POST":
-            payload = self._parse_json(body)
-            customer_id = payload.get("customerId") or payload.get("customer_id")
-            outcome = payload.get("outcome") or payload.get("result") or "answered"
-            duration = payload.get("duration")
-            self._json(200, self.service.submit_call_result(int(customer_id) if customer_id is not None else None, str(outcome), int(duration) if duration is not None else None, telegram_user_id=self.telegram_user_id))
-            return
-        if api_path == "/note" and method == "POST":
-            payload = self._parse_json(body)
-            customer_id = payload.get("customerId") or payload.get("customer_id")
-            note = payload.get("note") or payload.get("content") or ""
-            self._json(200, self.service.save_note(int(customer_id) if customer_id is not None else None, str(note), telegram_user_id=self.telegram_user_id))
-            return
-        if api_path == "/queue/pause" and method == "POST":
-            self._json(200, self.service.pause_queue())
-            return
-        if api_path == "/queue/resume" and method == "POST":
-            self._json(200, self.service.resume_queue())
-            return
-        if api_path == "/queue/call-back" and method == "POST":
-            self._json(200, self.service.call_back())
-            return
-        if api_path == "/queue/upcoming" and method == "GET":
-            result = self.service.get_upcoming_customer()
-            self._json(200, result or {})
-            return
-        if api_path == "/customer/search" and method == "GET":
-            params = parse_qs(parsed.query)
-            query = params.get("q", [""])[0]
-            self._json(200, self.service.search_customers(query))
-            return
-        if api_path == "/customer/record" and method == "GET":
-            params = parse_qs(parsed.query)
-            cid = params.get("id", [None])[0]
-            if cid is None:
-                self._json(400, {"error": "id is required"})
-                return
-            record = self.service.get_customer_record(int(cid))
-            if record is None:
-                self._json(404, {"error": "not found"})
-                return
-            self._json(200, record)
-            return
-        if api_path == "/customer/edit" and method == "POST":
-            payload = self._parse_json(body)
-            customer_id = payload.get("customerId") or payload.get("customer_id")
-            fields = payload.get("fields") or {}
-            self._json(200, self.service.edit_customer(int(customer_id), fields))
-            return
-        if api_path == "/customer/blacklist" and method == "POST":
-            payload = self._parse_json(body)
-            customer_id = payload.get("customerId") or payload.get("customer_id")
-            blacklisted = bool(payload.get("blacklisted", True))
-            self._json(200, self.service.set_customer_blacklisted(int(customer_id), blacklisted))
-            return
-        if api_path == "/phone/blacklist" and method == "POST":
-            payload = self._parse_json(body)
-            phone = payload.get("phone", "")
-            blacklisted = bool(payload.get("blacklisted", True))
-            reason = payload.get("reason")
-            self._json(200, self.service.set_phone_blacklisted(phone, blacklisted, reason))
-            return
-        
-        if api_path == "/export" and method == "GET":
-            admin_ids = self.service.backend.settings.admin_user_ids
-            if not self.telegram_user_id or self.telegram_user_id not in admin_ids:
-                self._json(403, {"error": "forbidden"})
+        if path.startswith("/api"):
+            api_path = path[len("/api") :]
+            if self._api_request(api_path, parsed.query, self.command.upper()):
                 return
 
-            params = parse_qs(parsed.query)
-            export_format = (params.get("format", ["csv"])[0]).lower()
-            if export_format not in ("csv", "json", "xlsx"):
-                self._json(400, {"error": f"unsupported format: {export_format}"})
-                return
-
-            try:
-                customers = self.service.database.get_all_customers()
-                session = self.service.session_manager.most_recent_session()
-                export_path = export_customers(customers, session["id"] if session else None, export_format)
-                
-                self.service.statistics.record_event(
-                    "admin_action",
-                    telegram_user_id=self.telegram_user_id,
-                    notes=f"export:{export_format}"
-                )
-                
-                content_type = "text/csv" if export_format == "csv" else "application/json" if export_format == "json" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                data = export_path.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-
-            except ExportError as e:
-                self._json(500, {"error": "export failed", "details": str(e)})
-            except Exception as e:
-                self._json(500, {"error": "internal server error", "details": str(e)})
-            return
-
-        if path.startswith("/api/") or path == "/api":
-            self._json(404, {"error": "not found"})
-            return
-
-        if method == "GET":
-            self._serve_static(path)
+        if self._serve_static(path):
             return
 
         self._json(404, {"error": "not found"})
 
-    def _serve_static(self, path: str) -> None:
-        """Serve the built frontend (index.html, /assets/*, favicon,
-        etc.) from FRONTEND_DIR.
+    def _api_request(self, path: str, query: str, method: str) -> bool:
+        """True if a matching API endpoint was found and handled, False otherwise."""
+        body = self._read_body()
+        query = parse_qs(query)
 
-        Only "/" (and "/index.html") fall back to index.html -- this
-        app has no client-side URL routing (it's a single-page app that
-        switches screens via internal state, not the URL), so any other
-        unmatched path is a genuine 404, not a deep link to redirect.
-        Falling back more broadly would silently turn a mistyped or
-        not-yet-implemented API path into a 200 HTML response instead
-        of a 404, which is worse for debugging, not better.
-        """
-        relative = path.lstrip("/")
-        if not relative:
-            relative = "index.html"
-
-        # Allow serving from the exports directory
-        if "export" in relative:
-             candidate = (BASE_DIR / relative).resolve()
-        else:
-            candidate = (FRONTEND_DIR / relative).resolve()
-        
         try:
-            if "export" not in relative:
-                candidate.relative_to(FRONTEND_DIR.resolve())
-        except ValueError:
-            self._json(404, {"error": "not found"})
-            return
-        if not candidate.is_file() and relative in ("", "index.html"):
-            candidate = FRONTEND_DIR / "index.html"
-        if not candidate.is_file():
-            self._json(404, {"error": "not found", "path": str(candidate)})
-            return
+            telegram_user_id = self._authenticate()
+        except TelegramAuthError as exc:
+            self._json(401, {"error": str(exc)})
+            return True
+        if path == "/session/current" and method == "GET":
+            self._json(200, self.service.get_current_session())
+            return True
+        if path == "/customer/current" and method == "GET":
+            self._json(200, self.service.get_current_customer() or {})
+            return True
+        if path == "/statistics" and method == "GET":
+            self._json(200, self.service.get_statistics())
+            return True
+        if path == "/session/next" and method == "POST":
+            self._json(200, self.service.next_customer())
+            return True
+        if path == "/call/start" and method == "POST":
+            payload = self._parse_json(body)
+            customer_id = payload.get("customerId") or payload.get("customer_id")
+            self._json(200, self.service.start_call(customer_id=int(customer_id) if customer_id is not None else None))
+            return True
+        if path == "/call/result" and method == "POST":
+            payload = self._parse_json(body)
+            customer_id = payload.get("customerId") or payload.get("customer_id")
+            outcome = payload.get("outcome") or payload.get("result") or "answered"
+            duration = payload.get("duration")
+            self._json(
+                200,
+                self.service.submit_call_result(
+                    int(customer_id) if customer_id is not None else None,
+                    str(outcome),
+                    int(duration) if duration is not None else None,
+                    telegram_user_id=telegram_user_id,
+                ),
+            )
+            return True
+        if path == "/note" and method == "POST":
+            payload = self._parse_json(body)
+            customer_id = payload.get("customerId") or payload.get("customer_id")
+            note = payload.get("note") or payload.get("content") or ""
+            self._json(200, self.service.save_note(int(customer_id) if customer_id is not None else None, str(note)))
+            return True
+        if path == "/queue/pause" and method == "POST":
+            self._json(200, self.service.pause_queue(telegram_user_id=telegram_user_id))
+            return True
+        if path == "/queue/call-back" and method == "POST":
+            self._json(200, self.service.call_back(telegram_user_id=telegram_user_id))
+            return True
+        if path == "/queue/upcoming" and method == "GET":
+            upcoming = self.service.queue_upcoming()
+            if upcoming is None:
+                self._json(404, {"error": "No upcoming customer"})
+                return True
+            self._json(200, upcoming)
+            return True
+        if path == "/customer/search" and method == "GET":
+            search_query = (query.get("q") or query.get("query") or [""])[0]
+            self._json(200, self.service.search_customers(search_query))
+            return True
+        if path == "/customer/record" and method == "GET":
+            raw_id = (query.get("id") or [None])[0]
+            if raw_id is None:
+                self._json(400, {"error": "id is required"})
+                return True
+            record = self.service.get_customer_record(int(raw_id))
+            if record is None:
+                self._json(404, {"error": "Customer not found"})
+                return True
+            self._json(200, record)
+            return True
+        if path == "/customer/edit" and method == "POST":
+            payload = self._parse_json(body)
+            customer_id = payload.get("customerId") or payload.get("customer_id")
+            fields = payload.get("fields") or {}
+            if customer_id is None:
+                self._json(400, {"error": "customerId is required"})
+                return True
+            self._json(
+                200,
+                self.service.edit_customer(int(customer_id), fields, telegram_user_id=telegram_user_id),
+            )
+            return True
+        if path == "/customer/blacklist" and method == "POST":
+            payload = self._parse_json(body)
+            customer_id = payload.get("customerId") or payload.get("customer_id")
+            blacklisted = bool(payload.get("blacklisted", True))
+            if customer_id is None:
+                self._json(400, {"error": "customerId is required"})
+                return True
+            self._json(
+                200,
+                self.service.set_customer_blacklist(
+                    int(customer_id), blacklisted, telegram_user_id=telegram_user_id
+                ),
+            )
+            return True
+        if path == "/phone/blacklist" and method == "POST":
+            payload = self._parse_json(body)
+            phone = payload.get("phone")
+            blacklisted = bool(payload.get("blacklisted", True))
+            reason = payload.get("reason")
+            if not phone:
+                self._json(400, {"error": "phone is required"})
+                return True
+            self._json(
+                200,
+                self.service.set_phone_blacklist(
+                    str(phone), blacklisted, reason=reason, telegram_user_id=telegram_user_id
+                ),
+            )
+            return True
+        if path == "/export" and method == "GET":
+            if not security.is_admin(telegram_user_id, self.service.settings):
+                self._json(403, {"error": "Admin authorization required"})
+                return True
+            export_format = (query.get("format") or ["csv"])[0].lower()
+            result = self.service.export(export_format, telegram_user_id=telegram_user_id)
+            if isinstance(result, dict):
+                self._json(400, result)
+                return True
+            file_bytes, content_type, filename = result
+            self._file(200, file_bytes, content_type, filename)
+            return True
 
-        content_type = mimetypes.guess_type(str(candidate))[0] or "application/octet-stream"
-        data = candidate.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        # No matching API endpoint found. The caller should now try static file serving.
+        return False
 
+    def _serve_static(self, path: str) -> bool:
+        """Serves static files from the frontend's build output directory."""
+        static_dir = self.service.backend.settings.mini_app_static_dir
+        if not static_dir or not static_dir.is_dir():
+            return False
+
+        if path == "/":
+            path = "/index.html"
+
+        # Sanitize path to prevent directory traversal
+        try:
+            # Important: os.path.normpath is not enough, as it doesn't
+            # prevent '..' segments from backing out of the root.
+            # Path.resolve() is the correct tool here.
+            filepath = (static_dir / path.lstrip("/")).resolve()
+            if not str(filepath).startswith(str(static_dir.resolve())):
+                return False  # Forbidden
+        except Exception:
+            return False  # Bad request or other error
+
+        if not filepath.is_file():
+            return False
+
+        content_type = {
+            ".html": "text/html",
+            ".css": "text/css",
+            ".js": "application/javascript",
+            ".svg": "image/svg+xml",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".ico": "image/x-icon",
+        }.get(filepath.suffix, "application/octet-stream")
+
+        try:
+            with filepath.open("rb") as f:
+                self.send_response(200)
+                self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+                self.send_header("Content-Length", str(filepath.stat().st_size))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(f.read())
+                return True
+        except OSError:
+            # This can still happen if the file is deleted between the
+            # is_file() check and the open() call.
+            return False
+
+    def _authenticate(self) -> int | None:
+        """Extract and validate the Telegram user id from the
+        Authorization header, if present. Missing credentials are still
+        allowed through (anonymous) for every endpoint except /export,
+        which checks admin authorization separately -- see
+        MINI_APP_API.md for the plan to make initData mandatory once the
+        real frontend always sends it. An Authorization header that IS
+        present but fails signature validation is always a hard 401,
+        never silently downgraded to anonymous.
+        """
+        header = self.headers.get("Authorization", "")
+        if not header:
+            return None
+        prefix = "tma "
+        if not header.startswith(prefix):
+            return None
+        init_data = header[len(prefix):]
+        validated = validate_init_data(
+            init_data,
+            self.service.bot_token,
+            max_age_seconds=self.service.settings.mini_app_auth_max_age_seconds,
+        )
+        return extract_user_id(validated)
 
     def _read_body(self) -> bytes:
         length_header = self.headers.get("Content-Length")
@@ -571,6 +659,15 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _file(self, status: int, body: bytes, content_type: str, filename: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
 
 class MiniAppAPI:
     def __init__(self, service: MiniAppService):
@@ -587,19 +684,20 @@ class MiniAppAPI:
         return Handler
 
 
-def create_service(
-    db_path: str | Path | None = None,
-    bot_token: str | None = None,
-    settings: Settings | None = None,
-) -> MiniAppService:
-    return MiniAppService(db_path=db_path, bot_token=bot_token, settings=settings)
+def create_service(backend: Backend | None = None) -> MiniAppService:
+    """Instantiates the Mini App's backend service, either from a shared
+    (injected) backend or by constructing a new one.
+    """
+    return MiniAppService(backend=backend)
 
 
 def main() -> None:
-    service = create_service()
+    """Entry point for starting the Mini App's standalone API server."""
+    backend = build_backend()
+    service = create_service(backend=backend)
     api = MiniAppAPI(service)
     server = api.create_server(host="0.0.0.0", port=8000)
-    print(f"Mini App API listening on http://0.0.0.0:8000")
+    print("Mini App API listening on http://0.0.0.0:8000")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

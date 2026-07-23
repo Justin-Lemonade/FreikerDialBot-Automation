@@ -22,6 +22,7 @@ from database import Database
 from formatting import format_currency, format_date, format_loan_number
 from logger import log
 from queue_engine import QueueEngine
+from queue_ui import queue_keyboard, render_customer
 from validation import normalize_phone_number
 
 
@@ -81,6 +82,56 @@ def _search_results_keyboard(results: list[dict]) -> InlineKeyboardMarkup:
         name = f"{customer['first_name']} {customer['last_name']}".strip() or "(name missing)"
         label = f"{name} — {customer['loan_number']}"
         rows.append([InlineKeyboardButton(label[:64], callback_data=f"customer_view:{customer['id']}")])
+    return InlineKeyboardMarkup(rows)
+
+
+def more_info_keyboard(record: dict) -> InlineKeyboardMarkup:
+    """Action panel shown alongside a full customer record (render_customer_record):
+    edit, blacklist/unblacklist, per-phone management, queue-this-customer,
+    return-to-queue, and full history. Every button here maps to a
+    cx:<action>:<id>[:<extra>] callback handled by
+    handle_customer_action_callback -- kept separate from queue_keyboard's
+    lightweight active-call-card buttons (queue_ui.py), which is
+    deliberately NOT cluttered with these less-frequently-used actions.
+    """
+    customer_id = record["id"]
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton("✏️ Edit Customer", callback_data=f"cx:edit:{customer_id}")],
+    ]
+    if record.get("is_blacklisted"):
+        rows.append([InlineKeyboardButton("✅ Unblacklist Customer", callback_data=f"cx:unbl:{customer_id}")])
+    else:
+        rows.append([InlineKeyboardButton("🚫 Blacklist Customer", callback_data=f"cx:bl:{customer_id}")])
+    rows.append([InlineKeyboardButton("📞 Manage Phones", callback_data=f"cx:phones:{customer_id}")])
+    rows.append([InlineKeyboardButton("➡️ Queue This Customer", callback_data=f"cx:queue:{customer_id}")])
+    rows.append([InlineKeyboardButton("↩️ Return to Queue", callback_data=f"cx:return:{customer_id}")])
+    rows.append([InlineKeyboardButton("🕘 Full History", callback_data=f"cx:hist:{customer_id}")])
+    return InlineKeyboardMarkup(rows)
+
+
+def phone_menu_keyboard(record: dict) -> InlineKeyboardMarkup:
+    """One row per phone number, each with Blacklist/Unblacklist and
+    Delete actions -- opened from more_info_keyboard's "Manage Phones"
+    button. Callback data carries the phone digits directly (cx:<action>:
+    <customer_id>:<phone>) since phones aren't independently identified
+    the way customers are."""
+    customer_id = record["id"]
+    phones = record.get("phone_numbers") or []
+    blacklisted_phones = set(record.get("blacklisted_phones") or [])
+    rows: list[list[InlineKeyboardButton]] = []
+    for phone in phones:
+        if phone in blacklisted_phones:
+            blacklist_button = InlineKeyboardButton(
+                f"✅ Unblacklist {phone}", callback_data=f"cx:unblphone:{customer_id}:{phone}"
+            )
+        else:
+            blacklist_button = InlineKeyboardButton(
+                f"🚫 Blacklist {phone}", callback_data=f"cx:blphone:{customer_id}:{phone}"
+            )
+        delete_button = InlineKeyboardButton(
+            f"🗑️ Delete {phone}", callback_data=f"cx:delphone:{customer_id}:{phone}"
+        )
+        rows.append([blacklist_button, delete_button])
     return InlineKeyboardMarkup(rows)
 
 
@@ -304,180 +355,136 @@ async def unblacklist_phone_command(update: Update, context: ContextTypes.DEFAUL
 
 
 # ---------------------------------------------------------------------------
-# More Info action keyboard / action callbacks
+# More Info action panel callbacks (cx:<action>:<id>[:<extra>])
 # ---------------------------------------------------------------------------
 
-def more_info_keyboard(record: dict) -> InlineKeyboardMarkup:
-    """Returns the action panel shown beneath a full customer record view.
-
-    Adapts to the current blacklist state so the right toggle is always
-    visible, and exposes edit, phone management, history, and queue
-    shortcuts from the same surface.
-    """
-    cid = record["id"]
-    rows: list[list[InlineKeyboardButton]] = []
-
-    if record.get("is_blacklisted"):
-        rows.append([InlineKeyboardButton("✅ Unblacklist Customer", callback_data=f"cx:unbl:{cid}")])
-    else:
-        rows.append([InlineKeyboardButton("🚫 Blacklist Customer", callback_data=f"cx:bl:{cid}")])
-
-    rows.append([
-        InlineKeyboardButton("✏️ Edit Record", callback_data=f"cx:edit:{cid}"),
-        InlineKeyboardButton("📞 Phone Menu", callback_data=f"cx:phones:{cid}"),
-    ])
-    rows.append([
-        InlineKeyboardButton("🕘 Full History", callback_data=f"cx:hist:{cid}"),
-        InlineKeyboardButton("▶️ Load Into Queue", callback_data=f"cx:queue:{cid}"),
-    ])
-    rows.append([InlineKeyboardButton("↩️ Return to Queue", callback_data=f"cx:return:{cid}")])
-    return InlineKeyboardMarkup(rows)
-
-
-def phone_menu_keyboard(record: dict) -> InlineKeyboardMarkup:
-    """Returns a per-phone action keyboard so the operator can blacklist or
-    delete individual phone numbers directly from the More Info view."""
-    cid = record["id"]
-    phones = record.get("phone_numbers") or []
-    rows: list[list[InlineKeyboardButton]] = []
-    for phone in phones:
-        rows.append([
-            InlineKeyboardButton(f"🚫 Blacklist {phone}", callback_data=f"cx:blphone:{cid}:{phone}"),
-            InlineKeyboardButton(f"🗑 Delete {phone}", callback_data=f"cx:delphone:{cid}:{phone}"),
-        ])
-    if not rows:
-        rows.append([InlineKeyboardButton("No phones on file", callback_data=f"cx:noop:{cid}")])
-    return InlineKeyboardMarkup(rows)
-
-
 async def handle_customer_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles all cx:<action>:<customer_id>[:<extra>] callbacks.
-
-    Action matrix:
-      bl        -- blacklist the customer
-      unbl      -- remove from blacklist
-      edit      -- reply with a pre-filled /edit command hint
-      phones    -- show the phone menu keyboard
-      blphone   -- blacklist a specific phone number
-      delphone  -- remove a specific phone number from the customer record
-      hist      -- reply with the customer's full history
-      queue     -- load the customer as the active queue entry
-      return    -- show the currently active queue card (or 'no active')
+    """Dispatches every button on more_info_keyboard / phone_menu_keyboard.
+    Callback data shape: cx:<action>:<customer_id>[:<extra>]. Each branch
+    delegates to the same QueueEngine methods /edit, /blacklist, etc.
+    already use, so there's one audited code path per action regardless
+    of which surface (command or button) triggered it.
     """
     query = update.callback_query
     database = _database_from_context(context)
     queue_engine = _queue_engine_from_context(context)
+    telegram_user_id = _user_id(update)
 
     try:
         await query.answer()
-        parts = query.data.split(":", 3)  # cx, action, cid[, extra]
-        if len(parts) < 3:
-            await query.message.reply_text("Invalid action.")
-            return
-
-        _prefix, action, raw_cid, *rest = parts
-        extra = rest[0] if rest else None
-        customer_id = int(raw_cid)
+        parts = query.data.split(":")
+        action = parts[1]
+        customer_id = int(parts[2]) if len(parts) > 2 else None
+        extra = parts[3] if len(parts) > 3 else None
 
         if action == "bl":
-            queue_engine.blacklist_customer(customer_id, True, telegram_user_id=_user_id(update))
-            record = await database.async_get_customer_record(customer_id)
-            await query.message.edit_text(render_customer_record(record), reply_markup=more_info_keyboard(record))
+            queue_engine.blacklist_customer(customer_id, True, telegram_user_id=telegram_user_id)
+            await query.message.edit_text("🚫 Customer blacklisted.")
+            return
 
-        elif action == "unbl":
-            queue_engine.blacklist_customer(customer_id, False, telegram_user_id=_user_id(update))
-            record = await database.async_get_customer_record(customer_id)
-            await query.message.edit_text(render_customer_record(record), reply_markup=more_info_keyboard(record))
+        if action == "unbl":
+            queue_engine.blacklist_customer(customer_id, False, telegram_user_id=telegram_user_id)
+            await query.message.edit_text("Customer removed from blacklist.")
+            return
 
-        elif action == "edit":
+        if action == "edit":
             customer = await database.async_get_customer(customer_id)
             if customer is None:
                 await query.message.reply_text("Customer not found.")
                 return
             await query.message.reply_text(
-                f"Use the /edit command to update this record, for example:\n"
-                f"/edit {customer['loan_number']} balance=<value>"
+                f"To edit this customer, send:\n/edit {customer['loan_number']} field=value"
             )
+            return
 
-        elif action == "phones":
+        if action == "phones":
             record = await database.async_get_customer_record(customer_id)
             if record is None:
                 await query.message.reply_text("Customer not found.")
                 return
-            await query.message.reply_text("Phone numbers:", reply_markup=phone_menu_keyboard(record))
+            await query.message.reply_text(
+                "Select a phone action:", reply_markup=phone_menu_keyboard(record)
+            )
+            return
 
-        elif action == "blphone":
-            if extra:
-                queue_engine.blacklist_phone(extra, telegram_user_id=_user_id(update))
-                await query.message.reply_text(f"🚫 Blacklisted {extra}.")
-            else:
-                await query.message.reply_text("No phone specified.")
-
-        elif action == "delphone":
-            if extra:
-                customer = await database.async_get_customer(customer_id)
-                if customer is None:
-                    await query.message.reply_text("Customer not found.")
-                    return
-                phones = [p for p in (customer.get("phone_numbers") or []) if p != extra]
-                queue_engine.edit_customer(customer_id, telegram_user_id=_user_id(update), phone_numbers=phones)
-                await query.message.reply_text(f"Removed {extra}.")
-            else:
-                await query.message.reply_text("No phone specified.")
-
-        elif action == "hist":
-            record = await database.async_get_customer_record(customer_id)
-            if record is None:
-                await query.message.reply_text("Customer not found.")
-                return
-            history = record.get("history") or []
-            if not history:
-                await query.message.reply_text("No history on record.")
-                return
-            lines = ["🕘 Full history:"]
-            for event in history:
-                ts = (event.get("event_timestamp") or "?").split("T")[0]
-                lines.append(f"- {ts}  {event['event_type']}")
-            await query.message.reply_text("\n".join(lines))
-
-        elif action == "queue":
+        if action == "delphone":
             customer = await database.async_get_customer(customer_id)
-            if customer is None or customer.get("is_blacklisted"):
-                # Fall through to whoever IS eligible
-                selection = queue_engine.next_customer()
-                if selection.customer:
-                    customer = selection.customer
-                else:
-                    await query.message.reply_text("No eligible customers in queue.")
-                    return
-            from queue_ui import queue_keyboard, render_customer
+            if customer is None:
+                await query.message.reply_text("Customer not found.")
+                return
+            remaining = [p for p in (customer.get("phone_numbers") or []) if p != extra]
+            queue_engine.edit_customer(
+                customer_id, telegram_user_id=telegram_user_id, phone_numbers=remaining
+            )
+            await query.message.reply_text(f"Removed {extra} from this customer's phone numbers.")
+            return
+
+        if action == "blphone":
+            queue_engine.blacklist_phone(extra, telegram_user_id=telegram_user_id)
+            await query.message.reply_text(f"🚫 Blacklisted phone {extra}.")
+            return
+
+        if action == "unblphone":
+            queue_engine.unblacklist_phone(extra, telegram_user_id=telegram_user_id)
+            await query.message.reply_text(f"Removed {extra} from the blacklist.")
+            return
+
+        if action == "queue":
+            customer = await database.async_get_customer(customer_id)
+            if customer is not None and not customer.get("is_blacklisted"):
+                database.update_queue_session(current_customer_id=customer_id)
+                progress = queue_engine.status()
+                await query.message.reply_text(
+                    render_customer(customer, progress),
+                    reply_markup=queue_keyboard(customer),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True,
+                )
+                return
+            # Blacklisted (or missing) -- fall through to whoever IS
+            # eligible next, same rule the mutating queue path enforces,
+            # rather than silently queueing someone who shouldn't be called.
+            fallback = queue_engine.peek_next_customer()
+            if fallback is None:
+                await query.message.reply_text("No eligible customer to queue.")
+                return
+            database.update_queue_session(current_customer_id=fallback["id"])
             progress = queue_engine.status()
             await query.message.reply_text(
-                render_customer(customer, progress),
-                reply_markup=queue_keyboard(customer),
+                render_customer(fallback, progress),
+                reply_markup=queue_keyboard(fallback),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
             )
+            return
 
-        elif action == "return":
-            from database import Database as _Db  # already imported
+        if action == "return":
             queue_state = database.get_queue_session()
-            current_id = queue_state.get("current_customer_id")
-            if not current_id:
-                await query.message.reply_text("No active customer in queue right now.")
+            active_id = queue_state.get("current_customer_id")
+            if not active_id:
+                await query.message.reply_text("No active customer to return to the queue.")
                 return
-            customer = await database.async_get_customer(int(current_id))
-            if customer is None:
-                await query.message.reply_text("No active customer in queue right now.")
+            active = await database.async_get_customer(int(active_id))
+            if active is None:
+                await query.message.reply_text("No active customer to return to the queue.")
                 return
-            from queue_ui import queue_keyboard, render_customer
             progress = queue_engine.status()
             await query.message.reply_text(
-                render_customer(customer, progress),
-                reply_markup=queue_keyboard(customer),
+                render_customer(active, progress),
+                reply_markup=queue_keyboard(active),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
             )
+            return
 
-        else:
-            await query.message.reply_text(f"Unknown action: {action}")
+        if action == "hist":
+            record = await database.async_get_customer_record(customer_id)
+            if record is None:
+                await query.message.reply_text("Customer not found.")
+                return
+            await query.message.reply_text(render_customer_record(record))
+            return
 
     except Exception:
         log.exception("Customer action callback failed")
-        await query.message.reply_text("Something went wrong.")
+        await query.message.reply_text("Something went wrong with that action.")

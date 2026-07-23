@@ -5,22 +5,12 @@ from __future__ import annotations
 import asyncio
 import time
 
-from telegram import (
-    Bot,
-    BotCommand,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    MenuButtonCommands,
-    MenuButtonWebApp,
-    Update,
-    WebAppInfo,
-)
+from telegram import Bot, BotCommand, MenuButtonCommands, MenuButtonWebApp, WebAppInfo
 from telegram.error import InvalidToken, NetworkError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
-    ContextTypes,
     MessageHandler,
     filters,
 )
@@ -33,6 +23,7 @@ from customer_ui import (
     blacklist_phone_command,
     customer_command,
     edit_command,
+    handle_customer_action_callback,
     handle_customer_callback,
     unblacklist_command,
     unblacklist_phone_command,
@@ -68,7 +59,7 @@ from telegram_ui import (
 # Commands shown in Telegram's floating "/" suggestion menu above the text box.
 BOT_COMMANDS = [
     BotCommand("start", "Show status and quick actions"),
-    BotCommand("app", "Open the Mini App"),
+    BotCommand("app", "Open the FreikerDial Mini App"),
     BotCommand("upload", "Reminder of how to bring in customer data"),
     BotCommand("resume", "Start or continue the calling queue"),
     BotCommand("pause", "Pause the calling queue"),
@@ -90,39 +81,44 @@ BOT_COMMANDS = [
 ]
 
 
-async def _post_init(application: Application) -> None:
-    await application.bot.set_my_commands(BOT_COMMANDS)
-
-    mini_app_url = application.bot_data["settings"].mini_app_url
-    if mini_app_url:
-        # Persistent Telegram menu button that opens the Mini App
-        # directly, alongside the /app command below -- this is what
-        # start_mini_app.py's own comments already describe as the
-        # intended behavior ("falling back to MenuButtonCommands" when
-        # no URL is configured), just not previously wired up anywhere.
-        await application.bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(text="Open App", web_app=WebAppInfo(url=mini_app_url))
-        )
-    else:
-        await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-
-
-async def open_app(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/app -- explicit command alternative to the menu button, for
-    clients/situations where the persistent menu button isn't visible."""
+async def app_command(update, context) -> None:
+    """/app -- opens the Mini App via an inline button. Kept as an
+    explicit command (in addition to the persistent menu button set in
+    _post_init) since the menu button alone is easy to miss, and because
+    MENU_BUTTON falls back to MenuButtonCommands when MINI_APP_URL isn't
+    configured -- this command's error message is what tells an operator
+    *why* nothing opened, instead of a silently-missing button.
+    """
     settings = context.application.bot_data["settings"]
     if not settings.mini_app_url:
         await update.effective_message.reply_text(
-            "The Mini App isn't configured yet -- MINI_APP_URL is not set. "
-            "Ask an admin to set it in .env and restart the bot."
+            "The Mini App isn't configured yet. Set MINI_APP_URL and restart the bot."
         )
         return
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
     keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("📱 Open App", web_app=WebAppInfo(url=settings.mini_app_url))]]
+        [[InlineKeyboardButton("📱 Open FreikerDial", web_app=WebAppInfo(url=settings.mini_app_url))]]
     )
     await update.effective_message.reply_text(
-        "Tap below to open the calling queue in the Mini App.", reply_markup=keyboard
+        "Tap below to open the Mini App:", reply_markup=keyboard
     )
+
+
+async def _post_init(application: Application) -> None:
+    await application.bot.set_my_commands(BOT_COMMANDS)
+    settings = application.bot_data.get("settings")
+    mini_app_url = settings.mini_app_url if settings else None
+    if mini_app_url:
+        await application.bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="Open App", web_app=WebAppInfo(url=mini_app_url))
+        )
+        log.info("Mini App menu button set to %s", mini_app_url)
+    else:
+        # No URL configured yet -- fall back to the ordinary command menu
+        # rather than pointing the button at a broken/empty URL.
+        await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        log.info("MINI_APP_URL not set; menu button shows commands instead")
 
 
 async def _verify_telegram_connectivity(token: str) -> None:
@@ -171,7 +167,7 @@ def build_application() -> Application:
     application.bot_data["runtime_dir"] = DATA_DIR
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("app", open_app))
+    application.add_handler(CommandHandler("app", app_command))
     application.add_handler(CommandHandler("upload", upload))
     application.add_handler(CommandHandler("pause", pause))
     application.add_handler(CommandHandler("resume", resume))
@@ -192,6 +188,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("unblacklist_phone", unblacklist_phone_command))
     application.add_handler(CallbackQueryHandler(handle_queue_callback, pattern=r"^queue_"))
     application.add_handler(CallbackQueryHandler(handle_customer_callback, pattern=r"^customer_view:"))
+    application.add_handler(CallbackQueryHandler(handle_customer_action_callback, pattern=r"^cx:"))
     application.add_handler(CallbackQueryHandler(handle_button))
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
     application.add_handler(

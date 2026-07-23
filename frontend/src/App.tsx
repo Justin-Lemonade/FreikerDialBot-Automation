@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MainLayout } from './layout/MainLayout';
 import { Home } from './pages/Home';
 import { Call } from './pages/Call';
@@ -9,7 +9,7 @@ import { useSession } from './hooks/useSession';
 import { useCustomer } from './hooks/useCustomer';
 import { useTelegram } from './hooks/useTelegram';
 import { useCallTimer } from './hooks/useCallTimer';
-import { api } from './api/client';
+import { api, ApiError } from './api/client';
 import type { Screen } from './types';
 
 const App = () => {
@@ -18,75 +18,143 @@ const App = () => {
   const [noteDraft, setNoteDraft] = useState('');
   const [outcome, setOutcome] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { session, refreshSession, nextSession } = useSession();
-  const { customer, refreshCustomer, nextCustomer, prefetchCustomer } = useCustomer();
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const { session, loadState, error: sessionError, isStale, refreshSession, applySession } = useSession();
+  const { customer, setFromSession } = useCustomer();
   const telegram = useTelegram();
   const timer = useCallTimer();
 
+  // Poll every 5s so the progress bar / next-customer stay live even if
+  // the operator leaves the app idle on one screen -- matches PRIORITY 1:
+  // the progress bar must always reflect real, current queue state, not
+  // a snapshot from whenever the screen last mounted.
   useEffect(() => {
     refreshSession();
-    refreshCustomer();
-    prefetchCustomer();
-  }, [refreshSession, refreshCustomer, prefetchCustomer]);
+    const interval = setInterval(refreshSession, 5000);
+    return () => clearInterval(interval);
+  }, [refreshSession]);
+
+  useEffect(() => {
+    if (session?.currentCustomer) {
+      setFromSession(session.currentCustomer);
+    }
+  }, [session, setFromSession]);
 
   useEffect(() => {
     if (telegram.isReady) {
       telegram.expand();
-      telegram.setBackButton(true, () => {
-        if (screen === 'call') {
-          setScreen('home');
-        } else if (screen !== 'home') {
-          setScreen('home');
-        }
-      });
+      telegram.setBackButton(screen !== 'home', () => setScreen('home'));
     }
   }, [screen, telegram]);
 
+  // Auto-navigate to the completion screen the moment the backend says
+  // the queue is done -- session.completed is real backend state (see
+  // MiniAppService.get_current_session's queue_complete finalization),
+  // never a client-side guess.
+  useEffect(() => {
+    if (session?.completed && screen !== 'complete' && screen !== 'statistics' && screen !== 'settings') {
+      setScreen('complete');
+    }
+  }, [session?.completed, screen]);
+
   const currentCustomer = useMemo(() => customer ?? session?.currentCustomer ?? null, [customer, session]);
 
-  const onStartCall = async () => {
+  const onStartCall = useCallback(async () => {
     if (!currentCustomer) return;
     timer.reset();
     setScreen('call');
-    await api.startCall({ customerId: currentCustomer.id, startedAt: new Date().toISOString() }).catch(() => undefined);
+    setActionError(null);
+    try {
+      await api.startCall(currentCustomer.id);
+    } catch (err) {
+      // Starting-call bookkeeping failing shouldn't block the operator
+      // from actually dialing -- surface it, don't block the phone call.
+      setActionError(err instanceof ApiError ? err.message : 'Could not record call start.');
+    }
     telegram.haptic('medium');
-    window.location.href = `tel:${currentCustomer.phone}`;
-  };
+    if (currentCustomer.phone) {
+      window.location.href = `tel:${currentCustomer.phone}`;
+    }
+  }, [currentCustomer, timer, telegram]);
 
-  const onReturnFromCall = () => {
-    const duration = timer.stop();
+  const onReturnFromCall = useCallback(() => {
     setOutcome(null);
-    setScreen('call');
     telegram.haptic('light');
-    telegram.showAlert(`Call finished • ${duration}`);
-  };
+  }, [telegram]);
 
-  const handleOutcome = async (nextOutcome: string) => {
-    if (!currentCustomer) return;
-    setOutcome(nextOutcome);
-    setIsSubmitting(true);
-    setTimeout(async () => {
-      await api.submitResult({ customerId: currentCustomer.id, outcome: nextOutcome, duration: timer.getDurationSeconds() }).catch(() => undefined);
-      setIsSubmitting(false);
-      await nextCustomer();
-      await nextSession();
-      setScreen('home');
-      setShowNotes(false);
-      setNoteDraft('');
-      telegram.haptic('success');
-    }, 450);
-  };
+  const handleOutcome = useCallback(
+    async (nextOutcome: string) => {
+      if (!currentCustomer || isSubmitting) return;
+      setOutcome(nextOutcome);
+      setIsSubmitting(true);
+      setActionError(null);
+      const durationSeconds = timer.getDurationSeconds();
+      try {
+        const result = await api.submitCallResult(currentCustomer.id, nextOutcome, durationSeconds);
+        if (!result.ok) {
+          setActionError(result.error || 'That outcome could not be recorded.');
+          setIsSubmitting(false);
+          setOutcome(null);
+          return;
+        }
+        timer.stop();
+        if (result.session) {
+          applySession(result.session);
+        }
+        setFromSession(result.nextCustomer ?? null);
+        telegram.haptic('success');
+        setIsSubmitting(false);
+        setOutcome(null);
+        setShowNotes(false);
+        setNoteDraft('');
+        if (!result.session?.completed) {
+          setScreen('home');
+        }
+      } catch (err) {
+        setActionError(err instanceof ApiError ? err.message : 'Could not record that outcome. Please try again.');
+        setIsSubmitting(false);
+        setOutcome(null);
+      }
+    },
+    [currentCustomer, isSubmitting, timer, applySession, setFromSession, telegram]
+  );
 
-  const handleSaveNote = async () => {
+  const handleSaveNote = useCallback(async () => {
     if (!currentCustomer || !noteDraft.trim()) return;
-    await api.saveNote({ customerId: currentCustomer.id, note: noteDraft.trim() }).catch(() => undefined);
-    setNoteDraft('');
-    setShowNotes(false);
-  };
+    try {
+      await api.saveNote(currentCustomer.id, noteDraft.trim());
+      setNoteDraft('');
+      setShowNotes(false);
+      setActionError(null);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Could not save that note.');
+    }
+  }, [currentCustomer, noteDraft]);
 
   const renderScreen = () => {
+    if (loadState === 'loading' && !session) {
+      return (
+        <div className="flex min-h-[240px] items-center justify-center text-slate-400">Loading queue…</div>
+      );
+    }
+
+    if (loadState === 'error' && !session) {
+      return (
+        <div className="space-y-3 rounded-[24px] border border-red-500/20 bg-red-500/5 p-5 text-center">
+          <p className="text-sm text-red-300">{sessionError || 'Could not reach the server.'}</p>
+          <button
+            onClick={refreshSession}
+            className="min-h-[48px] rounded-2xl border border-white/10 bg-slate-900 px-5 text-sm font-semibold active:scale-[0.98]"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
     if (screen === 'statistics') {
-      return <Statistics session={session} />;
+      return <Statistics />;
     }
 
     if (screen === 'settings') {
@@ -94,7 +162,22 @@ const App = () => {
     }
 
     if (screen === 'complete') {
-      return <SessionComplete session={session} onRetry={() => setScreen('home')} onHome={() => setScreen('home')} />;
+      return (
+        <SessionComplete
+          session={session}
+          onRetry={async () => {
+            try {
+              const result = await api.callBack();
+              if (result.session) applySession(result.session);
+              setFromSession(result.customer);
+              setScreen('home');
+            } catch (err) {
+              setActionError(err instanceof ApiError ? err.message : 'Could not requeue those customers.');
+            }
+          }}
+          onHome={() => setScreen('home')}
+        />
+      );
     }
 
     if (screen === 'call') {
@@ -134,10 +217,12 @@ const App = () => {
       onToggleNotes={() => setShowNotes((value) => !value)}
       session={session}
       customer={currentCustomer}
-      progressLabel={`${session?.currentCustomerIndex ?? 0}/${session?.customerCount ?? 0}`}
       onOpenStats={() => setScreen('statistics')}
       onBackHome={() => setScreen('home')}
       onNext={() => setScreen('call')}
+      isStale={isStale}
+      bannerError={actionError}
+      onDismissError={() => setActionError(null)}
     >
       {renderScreen()}
     </MainLayout>

@@ -124,8 +124,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             message = f"{total} customers loaded. Everyone has been called."
 
     await update.effective_message.reply_text(
-        f"{message}\n\n**Privacy Notice:** Pasted text and uploaded images are sent to third-party AI services for processing.",
-        reply_markup=idle_keyboard(total, waiting),
+        message, reply_markup=idle_keyboard(total, waiting)
     )
 
 
@@ -145,8 +144,7 @@ async def upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "\U0001f4cb Pasted customer text\n"
         "\U0001f4c4 A .json file (best for long lists -- avoids Telegram's message length limit)\n"
         "\U0001f4ca An Excel .xlsx file\n\n"
-        "All of these work without needing /upload first.\n\n"
-        "**Privacy Notice:** Pasted text and uploaded images are sent to third-party AI services for processing."
+        "All of these work without needing /upload first."
     )
 
 

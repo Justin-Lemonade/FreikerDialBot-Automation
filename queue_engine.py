@@ -75,6 +75,29 @@ class QueueEngine:
     def status(self) -> QueueProgress:
         return self._progress()
 
+    def peek_next_customer(self) -> dict[str, Any] | None:
+        """Non-mutating equivalent of next_customer(): returns the next
+        actionable customer WITHOUT committing it as current, advancing
+        current_position, or writing a customer_loaded event.
+
+        Used by read-only surfaces (Mini App GET endpoints) that must be
+        safe to poll repeatedly. Also skips any customer who is
+        blacklisted -- next_customer() intentionally does NOT do this
+        yet (see BACKLOG.md: blacklist-in-queue-selection is a separate,
+        undecided change to the *mutating* path), but a read-only peek
+        showing a blacklisted customer as "up next" is unambiguously
+        wrong regardless of that open decision, so this filters here.
+        """
+        exclude_ids: set[int] = set()
+        while True:
+            customer = self.database.get_next_actionable_customer(exclude_ids=exclude_ids or None)
+            if customer is None:
+                return None
+            if customer.get("is_blacklisted"):
+                exclude_ids.add(customer["id"])
+                continue
+            return customer
+
     def next_customer(self) -> QueueSelection:
         session = self.database.get_queue_session()
         progress = self._progress()
@@ -129,6 +152,7 @@ class QueueEngine:
         customer_id: int,
         status: ActionStatus,
         telegram_user_id: int | None = None,
+        duration_seconds: int | None = None,
     ) -> QueueSelection:
         if status not in {"warned", "call_later", "skip", "invalid_number"}:
             raise ValueError(f"Unsupported queue action: {status}")
@@ -158,6 +182,7 @@ class QueueEngine:
             event_type,
             customer=customer,
             telegram_user_id=telegram_user_id,
+            duration_seconds=duration_seconds,
         )
         return self.next_customer()
 
@@ -349,6 +374,7 @@ class QueueEngine:
         customer: dict[str, Any] | None = None,
         telegram_user_id: int | None = None,
         notes: str | None = None,
+        duration_seconds: int | None = None,
     ) -> None:
         if not self.statistics:
             return
@@ -362,4 +388,5 @@ class QueueEngine:
             customer=customer,
             telegram_user_id=telegram_user_id,
             notes=notes,
+            duration_seconds=duration_seconds,
         )

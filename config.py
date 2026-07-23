@@ -27,6 +27,7 @@ class Settings:
     # Telegram Mini App
     mini_app_url: str | None = None
     mini_app_auth_max_age_seconds: int = 86400
+    mini_app_static_dir: Path | None = None
 
     # Failover Provider Keys
     gemini_api_key: str | None = None
@@ -67,6 +68,9 @@ def load_settings() -> Settings:
         if value.strip().isdigit()
     )
 
+    mini_app_static_dir_str = os.getenv("MINI_APP_STATIC_DIR", "").strip() or None
+    mini_app_static_dir = Path(mini_app_static_dir_str) if mini_app_static_dir_str else None
+
     return Settings(
         telegram_bot_token=token,
         openai_api_key=openai_key,
@@ -76,6 +80,7 @@ def load_settings() -> Settings:
         mini_app_auth_max_age_seconds=int(
             (os.getenv("MINI_APP_AUTH_MAX_AGE_SECONDS", "").strip() or "86400")
         ),
+        mini_app_static_dir=mini_app_static_dir,
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip() or None,
         gemini_model=os.getenv("GEMINI_MODEL", "").strip() or None,
         github_token=os.getenv("GITHUB_TOKEN", "").strip() or None,

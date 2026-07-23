@@ -1,40 +1,59 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
-export const useCallTimer = () => {
-  const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [seconds, setSeconds] = useState(0);
-
-  useEffect(() => {
-    if (!startedAt) return;
-
-    const tick = window.setInterval(() => {
-      setSeconds(Math.floor((Date.now() - startedAt) / 1000));
-    }, 1000);
-
-    return () => window.clearInterval(tick);
-  }, [startedAt]);
-
-  const reset = () => {
-    setStartedAt(Date.now());
-    setSeconds(0);
-  };
-
-  const stop = () => {
-    const currentSeconds = seconds || Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000);
-    setStartedAt(null);
-    setSeconds(currentSeconds);
-    return getLabelFromSeconds(currentSeconds);
-  };
-
-  const getDurationSeconds = () => seconds;
-
-  const getLabel = () => getLabelFromSeconds(seconds);
-
-  return { reset, stop, getDurationSeconds, getLabel };
+const formatSeconds = (totalSeconds: number): string => {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${seconds}s`;
 };
 
-const getLabelFromSeconds = (seconds: number) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m ${secs}s`;
+/**
+ * Tracks elapsed call duration client-side for display purposes only
+ * (the "0:47" ticking label on the call screen). This duration is also
+ * sent to /call/result so the backend can persist it in
+ * customer_events.duration_seconds -- but the backend never trusts this
+ * as authoritative for anything queue-related; it's purely an operator-
+ * facing stat, matching how average_seconds_per_customer already works.
+ */
+export const useCallTimer = () => {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const startedAtRef = useRef<number | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearTick = useCallback(() => {
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  const reset = useCallback(() => {
+    clearTick();
+    startedAtRef.current = Date.now();
+    setElapsedSeconds(0);
+    intervalRef.current = setInterval(() => {
+      if (startedAtRef.current !== null) {
+        setElapsedSeconds(Math.floor((Date.now() - startedAtRef.current) / 1000));
+      }
+    }, 1000);
+  }, [clearTick]);
+
+  const stop = useCallback((): string => {
+    clearTick();
+    const finalSeconds =
+      startedAtRef.current !== null ? Math.floor((Date.now() - startedAtRef.current) / 1000) : elapsedSeconds;
+    startedAtRef.current = null;
+    return formatSeconds(finalSeconds);
+  }, [clearTick, elapsedSeconds]);
+
+  const getDurationSeconds = useCallback((): number => {
+    if (startedAtRef.current !== null) {
+      return Math.floor((Date.now() - startedAtRef.current) / 1000);
+    }
+    return elapsedSeconds;
+  }, [elapsedSeconds]);
+
+  const getLabel = useCallback((): string => formatSeconds(elapsedSeconds), [elapsedSeconds]);
+
+  return { reset, stop, getLabel, getDurationSeconds };
 };
