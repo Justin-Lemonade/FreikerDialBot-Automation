@@ -68,6 +68,22 @@ reasoning.
   opposed to when they were last called~~ — **fixed.** New
   `last_edited_timestamp`, set by `update_customer_fields`, distinct
   from `status_timestamp`.
+- ~~Blacklisted customers aren't skipped in the queue~~ — **fixed.**
+  `QueueEngine.next_customer()` (the mutating advance path used after
+  every real Contacted/Didn't Answer/etc. outcome) now skips blacklisted
+  customers, mirroring the read-only `peek_next_customer()`'s existing
+  filter. Previously only the read path was safe; the actual operator
+  workflow could still land on a blacklisted customer. Two new tests
+  (`test_next_customer_never_selects_a_blacklisted_customer`,
+  `test_apply_action_never_advances_into_a_blacklisted_customer`) verify
+  this through the real `apply_action` path, not just the peek path the
+  existing Mini App test already covered.
+- ~~Frontend never preloaded the next customer~~ — **fixed.** `App.tsx`
+  now calls the existing `GET /queue/upcoming` (already blacklist-safe on
+  its own) whenever the current customer changes, best-effort, and
+  `Home.tsx`'s "Next up" card — previously mislabeled and actually
+  re-displaying the *current* customer — now shows the real preloaded
+  one, with the current customer getting its own correctly-labeled card.
 
 ## Still open
 
@@ -100,8 +116,18 @@ reasoning.
 
 7. No `POST /queue/resume`.
 8. No Mini-App-side import flow (screenshots/text/files still Telegram-only).
-9. `paid` is a real `QueueEngine` action; Telegram's `queue_ui.py` has
-   no button for it — a frontend feature-parity gap, not a bug.
+9. **Correction (this pass): `paid` has no real write path anywhere.**
+   Previously framed as "a real `QueueEngine` action" with only a
+   frontend-parity gap. Confirmed by direct grep: `paid` exists only as
+   a schema-level enum value (`QUEUE_STATUSES`, `status_counts()`).
+   `QueueEngine.apply_action`'s `ActionStatus` type does not include it,
+   and nothing anywhere ever calls `update_customer_status(..., "paid")`.
+   The Mini App's Paid button is now disabled with an honest "not yet
+   available" state (see `OutcomeButtons.tsx`) rather than offering an
+   action that always fails or inventing a separate write path the
+   Telegram bot doesn't share. Implementing real Paid support is a
+   product decision requiring a real `apply_action` status + Telegram
+   button, not something to add silently to close this gap.
 10. No Telegram-side notifications for Mini App activity.
 11. **Correction (this pass): `POST /call/return` does not exist.**
     Previously documented as "exists (backend prep)," but confirmed
@@ -113,10 +139,7 @@ reasoning.
 12. **No Mini App frontend UI** for search/customer-detail/edit/blacklist
     — those endpoints exist backend-only (this pass was explicitly
     scoped to avoid new UI/styling work). See `ARCHITECTURE.md` addendum.
-13. **Blacklisted customers aren't skipped in the queue** — blacklist is
-    state + audit trail only right now, deliberately not wired into
-    `QueueEngine`'s customer-selection logic yet. See `ARCHITECTURE.md`
-    addendum for why that was left as a separate decision.
+13. *(Resolved this pass — see "Resolved" section above.)*
 14. `update_customer_fields` doesn't validate `balance`/`days_overdue`
     look numeric — consistent with how import-time validation already
     behaves, but worth a decision for manual edits specifically.

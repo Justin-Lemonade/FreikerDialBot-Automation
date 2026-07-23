@@ -7,7 +7,13 @@ duplicate what those classes already do. `mini_app_api.py`'s
 `MiniAppService` is the only thing that translates between HTTP JSON and
 the existing Python service objects.
 
-Base URL: `/api` by default (see `client.ts` / `VITE_API_BASE_URL`).
+Base URL: no fixed prefix -- routes are called as-is (e.g. `/session/current`,
+not `/api/session/current`). The frontend's `client.ts` prepends
+`VITE_API_BASE_URL` (an absolute origin, since the Mini App and
+`mini_app_api.py` run as separate processes on separate ports) directly
+to each path. Confirmed by direct inspection of both `client.ts` and
+`mini_app_api.py`'s route table -- corrected here from a previous,
+inaccurate "`/api` by default" claim.
 Server: `mini_app_api.py`, runs as its own process (`python mini_app_api.py`,
 default port 8000), separate from the Telegram bot process. Both share the
 same SQLite database file.
@@ -34,9 +40,11 @@ Uses Telegram's official [Mini App initData validation](https://core.telegram.or
 algorithm — implemented in `telegram_auth.py`, no custom auth system.
 
 **How to send it:** `Authorization: tma <initData>` header (Telegram's
-recommended scheme), or `X-Telegram-Init-Data: <initData>` as a fallback.
-`initData` is the raw string Telegram's WebApp JS SDK exposes as
-`window.Telegram.WebApp.initData`.
+recommended scheme). Confirmed by direct inspection of `_authenticate()`
+in `mini_app_api.py`: only the `Authorization` header is checked -- there
+is no `X-Telegram-Init-Data` fallback despite a previous version of this
+doc claiming one existed. `initData` is the raw string Telegram's WebApp
+JS SDK exposes as `window.Telegram.WebApp.initData`.
 
 **Current enforcement (intentional, temporary):**
 - No `Authorization` header at all → request is allowed through as

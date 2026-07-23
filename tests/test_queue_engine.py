@@ -42,6 +42,41 @@ def database(tmp_path):
     return db
 
 
+def test_next_customer_never_selects_a_blacklisted_customer(database):
+    """The MUTATING advance path (next_customer, invoked by apply_action
+    after every real Contacted/Didn't Answer/etc.) must skip blacklisted
+    customers exactly like the read-only peek_next_customer() already
+    did -- previously only the peek path filtered blacklisted customers,
+    so one could still become 'current' via the real operator workflow.
+    """
+    engine = QueueEngine(database)
+    first_id = database.get_customer(1)["id"]
+    database.set_customer_blacklisted(first_id, True)
+
+    selection = engine.next_customer()
+
+    assert selection.customer is not None
+    assert selection.customer["loan_number"] == "Q-2"
+    assert selection.customer["id"] != first_id
+
+
+def test_apply_action_never_advances_into_a_blacklisted_customer(database):
+    """End-to-end through the actual code path an operator outcome
+    triggers: apply_action() -> next_customer(). Q-2 gets blacklisted
+    mid-queue; completing Q-1 must land on Q-3, never Q-2.
+    """
+    queue = QueueEngine(database)
+    queue.resume()  # commits Q-1 as current
+
+    second_id = database.get_customer(2)["id"]
+    database.set_customer_blacklisted(second_id, True)
+
+    selection = queue.apply_action(database.get_customer(1)["id"], "warned")
+
+    assert selection.customer is not None
+    assert selection.customer["loan_number"] == "Q-3"
+
+
 def test_next_customer_selection_and_queue_order(database):
     queue = QueueEngine(database)
 

@@ -10,7 +10,7 @@ import { useCustomer } from './hooks/useCustomer';
 import { useTelegram } from './hooks/useTelegram';
 import { useCallTimer } from './hooks/useCallTimer';
 import { api, ApiError } from './api/client';
-import type { Screen } from './types';
+import type { Customer, Screen } from './types';
 
 const App = () => {
   const [screen, setScreen] = useState<Screen>('home');
@@ -19,6 +19,7 @@ const App = () => {
   const [outcome, setOutcome] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [upcomingCustomer, setUpcomingCustomer] = useState<Customer | null>(null);
 
   const { session, loadState, error: sessionError, isStale, refreshSession, applySession } = useSession();
   const { customer, setFromSession } = useCustomer();
@@ -59,6 +60,28 @@ const App = () => {
   }, [session?.completed, screen]);
 
   const currentCustomer = useMemo(() => customer ?? session?.currentCustomer ?? null, [customer, session]);
+
+  // Preload the next customer while the operator is still working the
+  // current one, so the transition after an outcome feels instant --
+  // reuses the existing, tested /queue/upcoming (QueueEngine-backed,
+  // read-only) endpoint rather than adding any new queue logic here.
+  // Best-effort only: if this fails, the operator experience is
+  // unaffected (submitCallResult's own response already carries the
+  // real nextCustomer regardless of whether this preload succeeded).
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getUpcoming()
+      .then((next) => {
+        if (!cancelled) setUpcomingCustomer(next && next.id ? next : null);
+      })
+      .catch(() => {
+        if (!cancelled) setUpcomingCustomer(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCustomer?.id]);
 
   const onStartCall = useCallback(async () => {
     if (!currentCustomer) return;
@@ -199,6 +222,7 @@ const App = () => {
       <Home
         session={session}
         customer={currentCustomer}
+        upcomingCustomer={upcomingCustomer}
         onContinue={() => setScreen('call')}
         onNewSession={() => setScreen('call')}
         onStatistics={() => setScreen('statistics')}

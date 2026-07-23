@@ -106,11 +106,23 @@ class QueueEngine:
             customer = self._current_customer(session)
             return QueueSelection(customer, progress, complete=False, paused=True)
 
+        exclude_ids: set[int] = set()
         while True:
-            customer = self.database.get_next_actionable_customer()
+            customer = self.database.get_next_actionable_customer(exclude_ids=exclude_ids or None)
             if customer is None:
                 self.database.update_queue_session(current_customer_id=None)
                 return QueueSelection(None, progress, complete=True, paused=False)
+
+            if customer.get("is_blacklisted"):
+                # A blacklisted customer must never become the active
+                # customer -- previously only peek_next_customer() (the
+                # read-only path) enforced this; the mutating advance
+                # path used after every real outcome did not, so a
+                # blacklisted customer could still surface as "current"
+                # here. Same exclude-and-retry pattern as
+                # peek_next_customer() for consistency.
+                exclude_ids.add(customer["id"])
+                continue
 
             if customer["status"] == "waiting" and not self._is_loadable(customer):
                 # A round-trip verification issue slipped through import.

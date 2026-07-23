@@ -4,20 +4,26 @@ import type { Customer, SessionSummary } from '../types';
 interface Props {
   session: SessionSummary | null;
   customer: Customer | null;
+  upcomingCustomer: Customer | null;
   onContinue: () => void;
   onNewSession: () => void;
   onStatistics: () => void;
   onSettings: () => void;
 }
 
-export const Home = ({ session, customer, onContinue, onNewSession, onStatistics, onSettings }: Props) => {
+export const Home = ({ session, customer, upcomingCustomer, onContinue, onNewSession, onStatistics, onSettings }: Props) => {
   const hasQueue = Boolean(session?.customerCount);
 
   return (
     <div className="space-y-4">
-      {/* Current Customer -- next up preview. The running progress bar
-          already lives in MainLayout's sticky ProgressHeader; this
-          screen doesn't duplicate it. */}
+      {/* Current + genuinely-preloaded-next customer preview, plus the
+          real answered-today count. The running progress bar already
+          lives in MainLayout's sticky ProgressHeader; this screen
+          doesn't duplicate it. The second card here used to be
+          mislabeled "Next up" while actually re-showing the *current*
+          customer -- now it shows the real preloaded upcoming customer
+          from GET /queue/upcoming, and the current customer gets its
+          own correctly-labeled card. */}
       <div className="grid gap-3 grid-cols-2">
         <SessionCard
           title="Answered today"
@@ -25,9 +31,16 @@ export const Home = ({ session, customer, onContinue, onNewSession, onStatistics
           description="Customers contacted"
         />
         <SessionCard
-          title="Next up"
+          title="Now calling"
           value={customer?.name || '—'}
           description={customer?.loanNumber || 'No customer queued'}
+        />
+      </div>
+      <div className="grid gap-3 grid-cols-2">
+        <SessionCard
+          title="Next up"
+          value={upcomingCustomer?.name || '—'}
+          description={upcomingCustomer?.loanNumber || 'End of queue'}
         />
       </div>
 
