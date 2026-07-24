@@ -113,6 +113,32 @@ def test_resume_after_restart_uses_database_state(database):
     assert selection.progress.current_position == 2
 
 
+def test_progress_excludes_blacklisted_customers_from_remaining(database):
+    """Confirmed live bug, now fixed: a blacklisted customer sitting in
+    'waiting' status was counted in QueueProgress.remaining even though
+    peek_next_customer()/next_customer() would never actually select
+    them -- meaning a queue whose only leftover customer was blacklisted
+    could never reach remaining=0 or 100%, and mini_app_api.py's session
+    auto-completion (which checks progress.remaining == 0) would never
+    fire. Handle the two real customers, blacklist the third, and
+    confirm progress reflects a genuinely-complete queue.
+    """
+    queue = QueueEngine(database)
+    first = queue.resume()
+    second = queue.apply_action(first.customer["id"], "warned")
+    third_selection = queue.apply_action(second.customer["id"], "call_later")
+
+    # third_selection.customer is the last real customer -- blacklist
+    # them mid-queue, the way an operator might via /blacklist.
+    last_customer_id = third_selection.customer["id"]
+    database.set_customer_blacklisted(last_customer_id, True)
+
+    progress = queue.status()
+
+    assert progress.remaining == 0
+    assert progress.percent == 100
+
+
 def test_queue_completion_and_summary(database):
     queue = QueueEngine(database)
     first = queue.resume()

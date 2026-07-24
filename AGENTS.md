@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Last verified against commit: f2e6acc5c5dd6e227d77fa4196f2cc7ac0906b7c
-Last updated: 2026-07-23
+Last verified against commit: f91e405bbbccb5ea452ad8ed3f2cb9ac7361e1be, plus this commit's own changes (launch-path consolidation + blacklist-completion fix -- see below)
+Last updated: 2026-07-24
 
 This is the canonical instruction file for AI coding agents (Claude, Gemini,
 Copilot, or others) working on this repository. If other agent-instruction
@@ -20,6 +20,19 @@ workflow a proper mobile UI instead of chat buttons.
 ## Architecture
 
 - `bot.py` — Telegram bot entry point, registers all commands/handlers.
+  **Also the single entrypoint for the entire stack**: `python bot.py`
+  now builds the frontend, starts the Mini App backend, and starts an
+  ngrok tunnel (if available) before starting the bot itself -- see
+  `start_mini_app.py`'s `launch_mini_app_stack()`, which `bot.py`'s
+  `main()` calls directly (in-process, not as a subprocess). Skip with
+  `--no-mini-app` or `DISABLE_MINI_APP=1`.
+- `start_mini_app.py` — exposes `launch_mini_app_stack()` (the actual
+  frontend-build + backend-start + ngrok-tunnel logic, used by both
+  entry points) and a standalone `main()` for anyone who wants the Mini
+  App stack running WITHOUT the bot (e.g. frontend development). Its
+  `main()` calls `launch_mini_app_stack()` then spawns
+  `bot.py --no-mini-app` as a subprocess, to avoid double-launching the
+  stack when used this way.
 - `database.py` — SQLite storage: customers, sessions, events, blacklist.
 - `queue_engine.py` — deterministic queue: who's next, status transitions, audit events.
 - `session_manager.py` / `statistics_engine.py` — session lifecycle + daily/lifetime stats.

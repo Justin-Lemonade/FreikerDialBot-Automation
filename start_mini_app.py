@@ -1,13 +1,25 @@
-"""One-command launcher for the Telegram Mini App development stack.
+"""Mini App stack launcher: frontend build, backend API, ngrok tunnel.
 
-Starts all three services (backend API, frontend dev server, ngrok tunnel),
-auto-discovers the ngrok HTTPS URL, sets MINI_APP_URL, and starts the bot
-with the correct configuration — no manual URL copying needed.
+launch_mini_app_stack() is the reusable entry point -- bot.py calls this
+directly (in-process, not as a subprocess) so `python bot.py` alone can
+bring up the entire stack: frontend build, Mini App backend, and the
+ngrok tunnel, before starting the Telegram bot itself with the
+discovered MINI_APP_URL already configured.
+
+Running this file directly (`python start_mini_app.py`) still works
+exactly as before, for anyone who wants only the Mini App stack (backend
++ frontend + tunnel) without also starting the bot -- e.g. a frontend
+developer iterating on the UI who doesn't want a live bot connected.
+That standalone mode is main(), below, which calls the same function
+this file exposes for bot.py, then additionally starts bot.py as a
+subprocess to preserve its previous "one command starts literally
+everything" behavior unchanged.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import time
 import json
@@ -86,31 +98,58 @@ def _wait_for_ngrok() -> str:
     )
 
 
-def main() -> None:
-    print("=" * 60)
-    print("  FreikerDialBot — Mini App Development Launcher")
-    print("=" * 60)
-    print()
+def launch_mini_app_stack(
+    base_dir: Path | None = None,
+) -> tuple[subprocess.Popen | None, subprocess.Popen | None, str | None]:
+    """Builds the frontend, starts the Mini App backend (statically
+    serving that build), and starts an ngrok tunnel to it if ngrok is
+    available.
 
-    # ── Step 1: Kill any existing ngrok tunnels ──────────────────────
-    _log("ngrok", "Stopping any existing ngrok tunnels...")
-    subprocess.run(["ngrok", "kill"], check=False)
-    time.sleep(1)
+    Returns (backend_proc, ngrok_proc, mini_app_url). ngrok_proc and
+    mini_app_url are None if ngrok isn't installed or no tunnel could be
+    established -- callers should treat that as "Mini App not
+    externally reachable yet" and degrade gracefully (see bot.py's
+    _post_init, which already falls back to MenuButtonCommands when
+    mini_app_url is falsy).
 
-    # ── Step 2: Build the frontend ──────────────────────────────────
+    Raises SystemExit(1) if the frontend build itself fails -- that one
+    failure IS fatal, since there is nothing to serve without it.
+    """
+    base_dir = base_dir or BASE_DIR
+    frontend_dir = base_dir / "frontend"
+
+    # ── Kill any existing ngrok tunnels ──────────────────────────────
+    # Guarded: `ngrok kill` unconditionally previously raised an
+    # uncaught FileNotFoundError and crashed the entire launch sequence
+    # -- before the frontend was even built -- if ngrok wasn't installed
+    # or wasn't on PATH. Neither the frontend build nor the backend
+    # start actually depend on ngrok, so a missing ngrok binary should
+    # degrade gracefully, not take down everything else with it.
+    ngrok_available = shutil.which("ngrok") is not None
+    if ngrok_available:
+        _log("ngrok", "Stopping any existing ngrok tunnels...")
+        subprocess.run(["ngrok", "kill"], check=False)
+        time.sleep(1)
+    else:
+        _log(
+            "ngrok",
+            "ngrok not found on PATH -- skipping tunnel setup. "
+            "Install ngrok (https://ngrok.com/download) and run "
+            "'ngrok config add-authtoken <token>' once, or set MINI_APP_URL "
+            "manually in .env if you're exposing the Mini App another way.",
+        )
+
+    # ── Build the frontend ───────────────────────────────────────────
     # mini_app_api.py serves the built frontend as static files from
-    # MINI_APP_STATIC_DIR (see mini_app_api.py's _serve_static) -- this
-    # is what makes the single ngrok tunnel to the backend actually
-    # work as a Mini App: one origin serves both the UI and the API, so
-    # there's no separate frontend process/port/CORS concern. Previously
-    # this launcher never built the frontend or set this variable at
-    # all, so opening the "Mini App" URL would 404 against a backend
-    # with nothing to serve.
-    dist_dir = FRONTEND_DIR / "dist"
+    # MINI_APP_STATIC_DIR (see mini_app_api.py's _serve_static) -- one
+    # origin serves both the UI and the API, so there's no separate
+    # frontend process/port/CORS concern and only one URL for Telegram
+    # to open.
+    dist_dir = frontend_dir / "dist"
     _log("frontend", "Building frontend (npm run build)...")
     build_result = subprocess.run(
         ["npm", "run", "build"],
-        cwd=str(FRONTEND_DIR),
+        cwd=str(frontend_dir),
         capture_output=True,
         text=True,
     )
@@ -125,34 +164,56 @@ def main() -> None:
         sys.exit(1)
     _log("frontend", f"Build complete: {dist_dir}")
 
-    # ── Step 3: Start the backend API ──────────────────────────────────
+    # ── Start the backend API ────────────────────────────────────────
     _log("backend", "Starting Mini App API on http://0.0.0.0:8000 ...")
     env = os.environ.copy()
     env["MINI_APP_STATIC_DIR"] = str(dist_dir)
     backend_proc = _start_process(
         [sys.executable, "mini_app_api.py"],
         "backend",
-        cwd=str(BASE_DIR),
+        cwd=str(base_dir),
         env=env,
     )
     time.sleep(2)  # brief pause to let it bind
 
-    # ── Step 4: Start ngrok tunnel to backend ──────────────────────────
-    _log("ngrok", "Starting ngrok tunnel to http://localhost:8000 ...")
-    ngrok_proc = _start_process(
-        ["ngrok", "http", "8000", "--log=stdout"],
-        "ngrok",
-    )
+    # ── Start ngrok tunnel to backend ────────────────────────────────
+    mini_app_url = None
+    ngrok_proc = None
+    if ngrok_available:
+        _log("ngrok", "Starting ngrok tunnel to http://localhost:8000 ...")
+        ngrok_proc = _start_process(
+            ["ngrok", "http", "8000", "--log=stdout"],
+            "ngrok",
+        )
+        try:
+            mini_app_url = _wait_for_ngrok()
+        except RuntimeError as e:
+            _log("launcher", f"ERROR: {e}")
+            _log("launcher", "Falling back -- set MINI_APP_URL manually in .env if needed")
+            mini_app_url = None
+    else:
+        _log("launcher", "Skipping ngrok tunnel (not installed) — set MINI_APP_URL manually in .env if needed")
 
-    # ── Step 5: Wait for ngrok and get URL ────────────────────────────
-    try:
-        mini_app_url = _wait_for_ngrok()
-    except RuntimeError as e:
-        _log("launcher", f"ERROR: {e}")
-        _log("launcher", "Falling back — set MINI_APP_URL manually in .env and restart bot.py")
-        mini_app_url = None
+    return backend_proc, ngrok_proc, mini_app_url
 
-    # ── Step 6: Start the bot with MINI_APP_URL set ──────────────────
+
+def main() -> None:
+    """Standalone CLI: brings up the full stack (frontend, backend,
+    ngrok, AND the bot) as four separate processes. Kept for anyone
+    used to running this file directly. The single-command entry point
+    bot.py now uses is launch_mini_app_stack() above, called in-process
+    (see bot.py's main()) -- this function is a thin wrapper around the
+    same logic plus spawning bot.py as an additional subprocess, so
+    there's exactly one place the actual stack-launching logic lives.
+    """
+    print("=" * 60)
+    print("  FreikerDialBot — Mini App Development Launcher")
+    print("=" * 60)
+    print()
+
+    backend_proc, ngrok_proc, mini_app_url = launch_mini_app_stack(BASE_DIR)
+
+    env = os.environ.copy()
     if mini_app_url:
         env["MINI_APP_URL"] = mini_app_url
         _log("launcher", f"MINI_APP_URL set to: {mini_app_url}")
@@ -161,7 +222,7 @@ def main() -> None:
 
     _log("bot", "Starting Telegram bot...")
     bot_proc = subprocess.Popen(
-        [sys.executable, "bot.py"],
+        [sys.executable, "bot.py", "--no-mini-app"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -190,7 +251,7 @@ def main() -> None:
         _log("launcher", "Shutting down all services...")
     finally:
         for proc in [backend_proc, ngrok_proc, bot_proc]:
-            if proc.poll() is None:
+            if proc is not None and proc.poll() is None:
                 proc.terminate()
         _log("launcher", "All services stopped.")
 

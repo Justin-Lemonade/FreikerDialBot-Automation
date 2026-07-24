@@ -329,11 +329,18 @@ class QueueEngine:
 
     def _progress(self, current_position: int | None = None) -> QueueProgress:
         counts = self.database.status_counts()
-        total = sum(counts.values())
-        remaining = counts["waiting"] + counts["needs_review"]
+        # remaining/total must exclude blacklisted customers stuck in
+        # 'waiting'/'needs_review' -- they can never actually be
+        # selected (see peek_next_customer/next_customer's blacklist
+        # skip), so counting them as "remaining" would mean a queue
+        # whose only leftover customers are blacklisted could never
+        # reach 100% or auto-complete. Confirmed live before this fix.
+        actionable_remaining = self.database.actionable_waiting_count()
+        handled = counts["warned"] + counts["call_later"] + counts["skip"] + counts["invalid_number"]
+        total = handled + actionable_remaining
+        remaining = actionable_remaining
         contacted = counts["warned"]
         did_not_answer = counts["call_later"]
-        handled = total - remaining
         if current_position is None:
             session = self.database.get_queue_session()
             current_position = int(session["current_position"] or handled)

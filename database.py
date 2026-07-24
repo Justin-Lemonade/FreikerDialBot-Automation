@@ -496,6 +496,31 @@ class Database:
                 counts[row["status"]] = int(row["count"])
         return counts
 
+    def actionable_waiting_count(self) -> int:
+        """Count of 'waiting'/'needs_review' customers who are NOT
+        blacklisted -- i.e. customers who could actually still be
+        surfaced by peek_next_customer()/next_customer().
+
+        status_counts()['waiting'] + status_counts()['needs_review']
+        counts blacklisted customers too, since it only groups by
+        status. That's fine for status_counts() as a general-purpose
+        primitive, but using it directly for "how many are left in the
+        queue" is wrong: a blacklisted customer sitting in 'waiting'
+        status can never actually be selected, yet would count as
+        'remaining' forever, meaning the queue could never reach 100%
+        or auto-complete. Confirmed live: a session with only a
+        blacklisted customer left stayed at remaining=1/67% forever.
+        """
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS count FROM customers
+                WHERE status IN ('waiting', 'needs_review')
+                  AND is_blacklisted = 0
+                """
+            ).fetchone()
+            return int(row["count"]) if row else 0
+
     def customers_by_status(self, status: str) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(

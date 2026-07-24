@@ -76,6 +76,24 @@ A complete Telegram-based customer calling automation system. Import customer li
    python bot.py
    ```
 
+   This single command now brings up the entire stack: it builds the
+   Mini App frontend, starts its backend API, starts an ngrok tunnel to
+   it (if ngrok is installed and configured), and then starts the
+   Telegram bot itself with the discovered Mini App URL already set --
+   no separate launcher script or manual URL copying needed.
+
+   - If ngrok isn't installed, the bot still starts normally; the Mini
+     App backend runs locally but has no externally-reachable URL yet
+     (set `MINI_APP_URL` manually in `.env` if you're exposing it another
+     way). See [ngrok's download page](https://ngrok.com/download) and
+     run `ngrok config add-authtoken <token>` once to enable this.
+   - To run the bot without the Mini App stack at all (e.g. no Node.js
+     available, or you only want the Telegram bot), use
+     `python bot.py --no-mini-app` or set `DISABLE_MINI_APP=1`.
+   - `python start_mini_app.py` still works as before if you want the
+     Mini App stack (frontend + backend + tunnel) without starting the
+     bot -- useful for frontend development.
+
 ## Usage
 
 ### Importing Customers

@@ -515,3 +515,105 @@ def test_missing_credentials_are_still_allowed_through(api_server):
     status, result = _request_json(server, "/statistics")
     assert status == 200
     assert "today" in result
+
+
+def test_static_frontend_and_api_are_served_from_the_same_origin(tmp_path: Path):
+    """Confirmed live during the launch-path fix: mini_app_api.py must
+    serve the built frontend (via MINI_APP_STATIC_DIR) AND the API from
+    the same process/port -- this is what makes the single ngrok tunnel
+    (see start_mini_app.py) actually work as a Mini App, since Telegram
+    only gets one URL. Builds a minimal fake 'dist' dir rather than
+    running a real `npm run build` (which the frontend test suite,
+    if one existed, would own) -- this test is specifically about
+    mini_app_api.py's _serve_static, not the frontend build itself.
+    """
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    (dist_dir / "index.html").write_text(
+        "<!doctype html><html><body><div id='root'>REAL_BUILT_APP_MARKER</div></body></html>"
+    )
+
+    db_path = tmp_path / "static_test.db"
+    database = Database(path=db_path)
+    settings = Settings(
+        telegram_bot_token=TEST_BOT_TOKEN,
+        openai_api_key=None,
+        mini_app_static_dir=dist_dir,
+    )
+    backend = build_backend(settings=settings, database=database)
+    service = MiniAppService(backend=backend)
+    api = MiniAppAPI(service)
+    server = api.create_server(host="127.0.0.1", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        host, port = server.server_address
+        with urllib.request.urlopen(f"http://{host}:{port}/", timeout=5) as resp:
+            assert resp.status == 200
+            body = resp.read().decode("utf-8")
+            assert "REAL_BUILT_APP_MARKER" in body
+
+        # Same server, same port: confirm the API still works too --
+        # this IS the same-origin proof, not a separate concern.
+        status, result = _request_json(server, "/session/current")
+        assert status == 200
+        assert "customerCount" in result
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_duplicate_call_result_submission_does_not_double_record(api_server):
+    """Confirmed live this pass: submitting the same outcome twice for a
+    customer who's already been handled (e.g. a double-tap, or a retry
+    after a slow/uncertain network response) must not double-count
+    statistics or record a second event. This works today because
+    QueueEngine.apply_action() only processes customers whose status is
+    still 'waiting'/'needs_review' -- once handled, a repeat call is a
+    safe no-op that just returns the current queue state again, not
+    because of any explicit idempotency-key mechanism.
+    """
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "loan-dup-001",
+                "first_name": "Nora",
+                "last_name": "Newton",
+                "phone_numbers": ["+15550009001"],
+                "balance": "500",
+                "days_overdue": "5",
+            }
+        ]
+    )
+    session_before = _request_json(server, "/session/current")[1]
+    first_customer_id = session_before["currentCustomer"]["id"]
+
+    first_status, first_result = _request_json(
+        server,
+        "/call/result",
+        method="POST",
+        payload={"customerId": first_customer_id, "outcome": "contacted", "duration": 10},
+    )
+    assert first_status == 200
+    assert first_result["ok"] is True
+
+    second_status, second_result = _request_json(
+        server,
+        "/call/result",
+        method="POST",
+        payload={"customerId": first_customer_id, "outcome": "contacted", "duration": 999},
+    )
+    assert second_status == 200
+    assert second_result["ok"] is True
+    # Critically: the duplicate must NOT re-advance or double-count --
+    # both responses must agree on who's current now.
+    assert second_result["session"]["currentCustomerIndex"] == first_result["session"]["currentCustomerIndex"]
+    assert second_result["session"]["progress"]["contacted"] == first_result["session"]["progress"]["contacted"]
+
+    events = service.database.get_customer_events(int(first_customer_id))
+    warned_events = [e for e in events if e["event_type"] == "customer_warned"]
+    assert len(warned_events) == 1
+    assert warned_events[0]["duration_seconds"] == 10  # the FIRST duration, not the duplicate's 999

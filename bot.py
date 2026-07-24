@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
 import time
 
 from telegram import Bot, BotCommand, MenuButtonCommands, MenuButtonWebApp, WebAppInfo
@@ -232,37 +234,77 @@ def build_application() -> Application:
 def main() -> None:
     log.info("Starting importer bot")
 
+    # ── Bring up the Mini App stack first (frontend build, backend API,
+    # ngrok tunnel) so `python bot.py` alone is a complete, single
+    # command -- no separate launcher script required. Skippable via
+    # --no-mini-app or DISABLE_MINI_APP=1 for anyone who wants just the
+    # Telegram bot (e.g. CI, a minimal deployment with no Node.js, or
+    # when start_mini_app.py's own standalone mode is already managing
+    # this as a subprocess and would otherwise double-launch it).
+    mini_app_procs: list = []
+    skip_mini_app = "--no-mini-app" in sys.argv or os.environ.get("DISABLE_MINI_APP") == "1"
+    if not skip_mini_app:
+        try:
+            from start_mini_app import launch_mini_app_stack
+
+            backend_proc, ngrok_proc, mini_app_url = launch_mini_app_stack()
+            mini_app_procs = [p for p in (backend_proc, ngrok_proc) if p is not None]
+            if mini_app_url:
+                os.environ["MINI_APP_URL"] = mini_app_url
+                log.info("Mini App stack up, MINI_APP_URL=%s", mini_app_url)
+            else:
+                log.info("Mini App backend started, but no tunnel URL available yet")
+        except SystemExit:
+            # launch_mini_app_stack() exits(1) only if the frontend
+            # build itself fails -- that's fatal for the Mini App, but
+            # NOT for the bot itself, so log and continue without it
+            # rather than taking the whole bot down over a frontend
+            # build error.
+            log.error("Mini App stack failed to start (see above) -- continuing with bot only")
+        except Exception:
+            log.exception("Mini App stack failed to start unexpectedly -- continuing with bot only")
+    else:
+        log.info("Skipping Mini App stack (--no-mini-app or DISABLE_MINI_APP=1)")
+
+    def _cleanup_mini_app_procs() -> None:
+        for proc in mini_app_procs:
+            if proc.poll() is None:
+                proc.terminate()
+
     retries = 0
     consecutive_network_failures = 0
-    while True:
-        try:
-            application = build_application()
-            asyncio.run(_verify_telegram_connectivity(application.bot_data["settings"].telegram_bot_token))
-            application.run_polling()
-            break
-        except KeyboardInterrupt:
-            log.info("Bot stopped by user")
-            break
-        except RuntimeError as exc:
-            log.error("Bot startup failed: %s", exc)
-            raise
-        except NetworkError as exc:
-            consecutive_network_failures += 1
-            retries += 1
-            delay = min(5 * retries, 60)
-            log.warning(
-                "Telegram network error (%s consecutive), retrying in %ss: %s",
-                consecutive_network_failures,
-                delay,
-                exc,
-            )
-            time.sleep(delay)
-        except Exception as exc:
-            consecutive_network_failures += 1
-            retries += 1
-            delay = min(10 * retries, 60)
-            log.exception("Bot crashed, restarting in %ss: %s", delay, exc)
-            time.sleep(delay)
+    try:
+        while True:
+            try:
+                application = build_application()
+                asyncio.run(_verify_telegram_connectivity(application.bot_data["settings"].telegram_bot_token))
+                application.run_polling()
+                break
+            except KeyboardInterrupt:
+                log.info("Bot stopped by user")
+                break
+            except RuntimeError as exc:
+                log.error("Bot startup failed: %s", exc)
+                raise
+            except NetworkError as exc:
+                consecutive_network_failures += 1
+                retries += 1
+                delay = min(5 * retries, 60)
+                log.warning(
+                    "Telegram network error (%s consecutive), retrying in %ss: %s",
+                    consecutive_network_failures,
+                    delay,
+                    exc,
+                )
+                time.sleep(delay)
+            except Exception as exc:
+                consecutive_network_failures += 1
+                retries += 1
+                delay = min(10 * retries, 60)
+                log.exception("Bot crashed, restarting in %ss: %s", delay, exc)
+                time.sleep(delay)
+    finally:
+        _cleanup_mini_app_procs()
 
 
 if __name__ == "__main__":
