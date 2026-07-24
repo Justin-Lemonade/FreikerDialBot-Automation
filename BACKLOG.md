@@ -145,6 +145,40 @@ reasoning.
     behaves, but worth a decision for manual edits specifically.
 15. Search has a flat result cap (20 Mini App / 10 Telegram), no
     pagination — fine at current data volumes.
+18. **Security decision, not silently made:** anonymous (no
+    `Authorization` header) Mini App API access is still allowed on
+    every endpoint except `/export`. Confirmed this pass that the real
+    frontend's `getInitData()` only attaches the header when
+    `window.Telegram.WebApp.initData` is non-empty at request time —
+    it does NOT always send credentials (e.g. if the app is opened
+    outside Telegram, or hit before Telegram's WebApp script finishes
+    initializing). Removing anonymous access now would risk legitimate
+    requests failing on a timing edge case, not just blocking bad
+    actors. Recommend: confirm `initData` is reliably populated before
+    the first API call fires (e.g. gate the initial fetch on
+    `telegram.isReady`) before making auth mandatory.
+19. **Real gap, not implemented:** a customer whose every phone number
+    is blacklisted is still selectable as current/next — queue
+    eligibility only checks the customer-level `is_blacklisted` flag,
+    not "does this customer have at least one non-blacklisted phone."
+    `first_non_blacklisted_phone()` correctly falls back to *showing*
+    the first (blacklisted) number rather than blanking it, but nothing
+    skips the customer entirely the way a real "can't actually be
+    called" case probably should. Verified live via HTTP, not just
+    inspection. Not implementing this now — it's a new business rule
+    (what does "uncallable" mean for queue eligibility?) requiring a
+    decision, not a bug fix.
+20. **Confirmed, exact defect, not silently fixed:** `duration_seconds`
+    in `complete_current_session()` is raw wall-clock time from
+    `started_at` to `finished_at`, with no pause-awareness and no idle
+    detection. A session started, worked briefly, then left open for a
+    week before being resumed and finished would report an absurdly
+    inflated `average_seconds_per_customer`. Smallest correct fix is
+    unclear without a product decision: should idle time simply not
+    count (requires tracking active-vs-idle segments), should there be
+    an auto-pause-after-inactivity threshold, or should duration be
+    capped at some sane maximum? Flagging precisely rather than
+    guessing at the right semantics.
 
 ### Pre-existing, unrelated to any of this work
 

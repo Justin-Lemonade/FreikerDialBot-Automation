@@ -58,6 +58,25 @@ async def test_app_command_explains_when_not_configured():
 
 
 @pytest.mark.asyncio
+async def test_app_command_explains_when_url_is_not_https():
+    """Telegram requires HTTPS for web_app URLs -- a misconfigured
+    http:// or bare-host value must get a clear, specific error instead
+    of failing inside Telegram's own API call with an opaque exception.
+    """
+    update = MagicMock()
+    update.effective_message.reply_text = AsyncMock()
+    context = MagicMock()
+    context.application.bot_data = {"settings": _settings("http://localhost:5173")}
+
+    await app_command(update, context)
+
+    update.effective_message.reply_text.assert_awaited_once()
+    args, kwargs = update.effective_message.reply_text.call_args
+    assert "https" in args[0].lower()
+    assert "reply_markup" not in kwargs
+
+
+@pytest.mark.asyncio
 async def test_post_init_sets_web_app_menu_button_when_configured():
     application = MagicMock()
     application.bot.set_my_commands = AsyncMock()
@@ -78,6 +97,24 @@ async def test_post_init_falls_back_to_commands_menu_when_unconfigured():
     application.bot.set_my_commands = AsyncMock()
     application.bot.set_chat_menu_button = AsyncMock()
     application.bot_data = {"settings": _settings(None)}
+
+    await _post_init(application)
+
+    _args, kwargs = application.bot.set_chat_menu_button.call_args
+    assert isinstance(kwargs["menu_button"], MenuButtonCommands)
+
+
+@pytest.mark.asyncio
+async def test_post_init_falls_back_to_commands_menu_when_url_is_not_https():
+    """Same rationale as the /app command test: a non-HTTPS MINI_APP_URL
+    must fall back safely rather than being handed to Telegram's API,
+    which would reject it -- previously surfacing only as a silent,
+    repeating crash-and-retry loop in bot.py's main().
+    """
+    application = MagicMock()
+    application.bot.set_my_commands = AsyncMock()
+    application.bot.set_chat_menu_button = AsyncMock()
+    application.bot_data = {"settings": _settings("http://localhost:5173")}
 
     await _post_init(application)
 

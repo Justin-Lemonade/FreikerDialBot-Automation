@@ -7,13 +7,22 @@ duplicate what those classes already do. `mini_app_api.py`'s
 `MiniAppService` is the only thing that translates between HTTP JSON and
 the existing Python service objects.
 
-Base URL: no fixed prefix -- routes are called as-is (e.g. `/session/current`,
-not `/api/session/current`). The frontend's `client.ts` prepends
-`VITE_API_BASE_URL` (an absolute origin, since the Mini App and
-`mini_app_api.py` run as separate processes on separate ports) directly
-to each path. Confirmed by direct inspection of both `client.ts` and
-`mini_app_api.py`'s route table -- corrected here from a previous,
-inaccurate "`/api` by default" claim.
+Base URL: no fixed prefix required -- routes are called as-is (e.g.
+`/session/current`), and this is what `client.ts` actually uses. An
+`/api/*` prefix is ALSO accepted as an alias (`_dispatch()` strips a
+leading `/api` and retries the match) -- confirmed by direct inspection
+of `mini_app_api.py`'s `_dispatch()`, correcting a previous, incomplete
+note here that called the `/api` prefix nonexistent; it exists as an
+accepted alias, just isn't the one the frontend uses.
+
+`client.ts`'s `VITE_API_BASE_URL` now defaults to `''` (relative,
+same-origin) rather than an absolute URL -- this matches the project's
+actual deployment path (`start_mini_app.py` builds the frontend and
+points `mini_app_api.py` at it via `MINI_APP_STATIC_DIR`, so both are
+served from the same origin/port and relative paths resolve correctly
+through the ngrok tunnel). Only set `VITE_API_BASE_URL` explicitly if
+running the frontend as a separate `npm run dev` process against a
+different-origin backend.
 Server: `mini_app_api.py`, runs as its own process (`python mini_app_api.py`,
 default port 8000), separate from the Telegram bot process. Both share the
 same SQLite database file.

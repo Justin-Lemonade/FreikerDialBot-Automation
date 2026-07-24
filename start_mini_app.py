@@ -36,7 +36,9 @@ def _read_stream(stream, service: str) -> None:
     stream.close()
 
 
-def _start_process(cmd: list[str], service: str, cwd: str | None = None) -> subprocess.Popen:
+def _start_process(
+    cmd: list[str], service: str, cwd: str | None = None, env: dict[str, str] | None = None
+) -> subprocess.Popen:
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -44,6 +46,7 @@ def _start_process(cmd: list[str], service: str, cwd: str | None = None) -> subp
         text=True,
         bufsize=1,
         cwd=cwd,
+        env=env,
     )
     thread = threading.Thread(target=_read_stream, args=(proc.stdout, service), daemon=True)
     thread.start()
@@ -94,23 +97,54 @@ def main() -> None:
     subprocess.run(["ngrok", "kill"], check=False)
     time.sleep(1)
 
-    # ── Step 2: Start the backend API ──────────────────────────────────
+    # ── Step 2: Build the frontend ──────────────────────────────────
+    # mini_app_api.py serves the built frontend as static files from
+    # MINI_APP_STATIC_DIR (see mini_app_api.py's _serve_static) -- this
+    # is what makes the single ngrok tunnel to the backend actually
+    # work as a Mini App: one origin serves both the UI and the API, so
+    # there's no separate frontend process/port/CORS concern. Previously
+    # this launcher never built the frontend or set this variable at
+    # all, so opening the "Mini App" URL would 404 against a backend
+    # with nothing to serve.
+    dist_dir = FRONTEND_DIR / "dist"
+    _log("frontend", "Building frontend (npm run build)...")
+    build_result = subprocess.run(
+        ["npm", "run", "build"],
+        cwd=str(FRONTEND_DIR),
+        capture_output=True,
+        text=True,
+    )
+    if build_result.returncode != 0:
+        _log("frontend", "ERROR: frontend build failed:")
+        print(build_result.stdout)
+        print(build_result.stderr)
+        _log("launcher", "Aborting -- cannot serve a Mini App with no built frontend.")
+        sys.exit(1)
+    if not dist_dir.is_dir():
+        _log("frontend", f"ERROR: build succeeded but {dist_dir} does not exist.")
+        sys.exit(1)
+    _log("frontend", f"Build complete: {dist_dir}")
+
+    # ── Step 3: Start the backend API ──────────────────────────────────
     _log("backend", "Starting Mini App API on http://0.0.0.0:8000 ...")
+    env = os.environ.copy()
+    env["MINI_APP_STATIC_DIR"] = str(dist_dir)
     backend_proc = _start_process(
         [sys.executable, "mini_app_api.py"],
         "backend",
         cwd=str(BASE_DIR),
+        env=env,
     )
     time.sleep(2)  # brief pause to let it bind
 
-    # ── Step 3: Start ngrok tunnel to backend ──────────────────────────
+    # ── Step 4: Start ngrok tunnel to backend ──────────────────────────
     _log("ngrok", "Starting ngrok tunnel to http://localhost:8000 ...")
     ngrok_proc = _start_process(
         ["ngrok", "http", "8000", "--log=stdout"],
         "ngrok",
     )
 
-    # ── Step 4: Wait for ngrok and get URL ────────────────────────────
+    # ── Step 5: Wait for ngrok and get URL ────────────────────────────
     try:
         mini_app_url = _wait_for_ngrok()
     except RuntimeError as e:
@@ -118,8 +152,7 @@ def main() -> None:
         _log("launcher", "Falling back — set MINI_APP_URL manually in .env and restart bot.py")
         mini_app_url = None
 
-    # ── Step 5: Start the bot with MINI_APP_URL set ──────────────────
-    env = os.environ.copy()
+    # ── Step 6: Start the bot with MINI_APP_URL set ──────────────────
     if mini_app_url:
         env["MINI_APP_URL"] = mini_app_url
         _log("launcher", f"MINI_APP_URL set to: {mini_app_url}")

@@ -95,6 +95,17 @@ async def app_command(update, context) -> None:
             "The Mini App isn't configured yet. Set MINI_APP_URL and restart the bot."
         )
         return
+    if not settings.mini_app_url.startswith("https://"):
+        # Telegram requires HTTPS for web_app URLs -- surfacing this
+        # here specifically, rather than letting the API call below
+        # fail with a generic Telegram error, since this exact
+        # misconfiguration (e.g. a leftover http:// or bare ngrok host
+        # without the scheme) is easy to make by hand.
+        await update.effective_message.reply_text(
+            "MINI_APP_URL is set but isn't HTTPS -- Telegram requires an "
+            "https:// URL for Mini Apps. Fix MINI_APP_URL and restart the bot."
+        )
+        return
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     keyboard = InlineKeyboardMarkup(
@@ -109,6 +120,21 @@ async def _post_init(application: Application) -> None:
     await application.bot.set_my_commands(BOT_COMMANDS)
     settings = application.bot_data.get("settings")
     mini_app_url = settings.mini_app_url if settings else None
+    if mini_app_url and not mini_app_url.startswith("https://"):
+        # Telegram requires HTTPS for web_app URLs and will reject this
+        # at the API call below -- previously that rejection surfaced
+        # only as a generic "Bot crashed, restarting in Ns" loop in
+        # main()'s outer retry handler, silently forever, with nothing
+        # telling the operator *why*. Fail this specific case clearly
+        # instead, matching /app's own explicit-error precedent.
+        log.error(
+            "MINI_APP_URL is set but is not HTTPS (got: %r). "
+            "Telegram requires HTTPS for Mini App URLs -- an http:// or "
+            "bare-host value will be rejected by Telegram's API. "
+            "Falling back to MenuButtonCommands until this is fixed.",
+            mini_app_url,
+        )
+        mini_app_url = None
     if mini_app_url:
         await application.bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(text="Open App", web_app=WebAppInfo(url=mini_app_url))

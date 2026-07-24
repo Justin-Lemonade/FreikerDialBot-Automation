@@ -4,17 +4,31 @@
  * instead of calling fetch() directly, so retry/error/auth behavior
  * only needs to be right in one place.
  *
- * Base URL: the backend (mini_app_api.py) runs as its own process on a
- * different port than the Vite dev server (see start_mini_app.py), so
- * this can't assume same-origin. VITE_API_BASE_URL should be set to
- * wherever mini_app_api.py is actually listening -- during local dev
- * via start_mini_app.py that's http://localhost:8000; in production
- * behind the ngrok tunnel, the bot passes the tunneled MINI_APP_URL to
- * the frontend, and the backend needs to be reachable at a URL of its
- * own (see ARCHITECTURE.md note on this before deploying).
+ * Base URL: defaults to '' (relative/same-origin). This matches the
+ * project's actual, configured deployment path: mini_app_api.py serves
+ * the built frontend itself as static files (see mini_app_api.py's
+ * _serve_static and config.py's MINI_APP_STATIC_DIR) when
+ * start_mini_app.py builds and points at frontend/dist, so the frontend
+ * and API share one origin and relative paths just work -- through the
+ * ngrok tunnel, from a real phone, with no configuration needed.
+ *
+ * IMPORTANT: a previous version of this file defaulted to
+ * 'http://localhost:8000'. That is only correct for someone running
+ * `npm run dev` as a separate process from the API on their own
+ * development machine. Baked into a production build and opened inside
+ * Telegram on a real phone, "localhost" resolves to the phone itself,
+ * not the server -- the app would never reach the backend. Confirmed
+ * by tracing start_mini_app.py's actual process topology: it only
+ * starts the backend + an ngrok tunnel to the backend, never a separate
+ * frontend dev server.
+ *
+ * Override via VITE_API_BASE_URL only if you are intentionally running
+ * the frontend as a separate dev-server process against a
+ * different-origin backend (e.g. `npm run dev` + `python
+ * mini_app_api.py` on two different ports on the same machine).
  */
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:8000';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 
 export class ApiError extends Error {
   status: number;
