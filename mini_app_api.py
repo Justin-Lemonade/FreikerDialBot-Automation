@@ -693,11 +693,25 @@ def create_service(backend: Backend | None = None) -> MiniAppService:
 
 def main() -> None:
     """Entry point for starting the Mini App's standalone API server."""
+    import sys
+
+    # Defaults
+    host = "127.0.0.1"
+    port = 8080
+
+    if len(sys.argv) > 1:
+        host = sys.argv[1]
+    if len(sys.argv) > 2:
+        try:
+            port = int(sys.argv[2])
+        except (ValueError, TypeError):
+            print(f"Invalid port '{sys.argv[2]}'; using default {port}")
+
     backend = build_backend()
     service = create_service(backend=backend)
     api = MiniAppAPI(service)
-    server = api.create_server(host="0.0.0.0", port=8000)
-    print("Mini App API listening on http://0.0.0.0:8000")
+    server = api.create_server(host=host, port=port)
+    print(f"Mini App API listening on http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

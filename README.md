@@ -75,6 +75,7 @@ A complete Telegram-based customer calling automation system. Import customer li
    ```bash
    python bot.py
    ```
+   This command starts the Telegram bot and automatically launches the integrated Mini App web server. No separate steps are required to use the Mini App.
 
    This single command now brings up the entire stack: it builds the
    Mini App frontend, starts its backend API, starts an ngrok tunnel to
@@ -95,6 +96,20 @@ A complete Telegram-based customer calling automation system. Import customer li
      bot -- useful for frontend development.
 
 ## Usage
+
+### Mini App and Development
+
+The bot is designed to be self-contained. When you run `python bot.py`, it automatically starts the Mini App backend server, which serves both the API and the frontend user interface.
+
+- **URL**: The server runs locally, typically on `http://127.0.0.1:8080`.
+- **Configuration**: You can change the host and port by setting `MINI_APP_HOST` and `MINI_APP_PORT` in your `.env` file.
+- **No Manual Steps**: You do not need to run the Mini App in a separate terminal. The bot manages its lifecycle completely.
+
+For **active development**, especially on the frontend, the old workflow is still available and recommended:
+- **`start_mini_app.py`**: Use this script to run the backend, frontend dev server (with live-reloading), and an `ngrok` tunnel for testing on a real device. This script is for development convenience and not needed for normal operation.
+- To use it, you will likely need two terminals:
+  1. `python start_mini_app.py`
+  2. `cd frontend && npm run dev`
 
 ### Importing Customers
 

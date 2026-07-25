@@ -6,6 +6,15 @@ import asyncio
 import os
 import sys
 import time
+import os
+import sys
+import json
+import subprocess
+import threading
+import urllib.request
+import urllib.error
+from pathlib import Path
+import atexit
 
 from telegram import Bot, BotCommand, MenuButtonCommands, MenuButtonWebApp, WebAppInfo
 from telegram.error import InvalidToken, NetworkError
@@ -28,7 +37,7 @@ from customer_ui import (
     handle_customer_action_callback,
     handle_customer_callback,
     unblacklist_command,
-    unblacklist_phone_command,
+unblacklist_phone_command,
 )
 from database import Database
 from importer import Importer
@@ -82,6 +91,74 @@ BOT_COMMANDS = [
     BotCommand("export", "Export customer records as CSV, JSON, or XLSX (admin)"),
 ]
 
+# --- Start of added dev server constants and helpers ---
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+NGROK_API_URL = "http://127.0.0.1:4040/api/tunnels"
+POLL_INTERVAL = 1.0
+MAX_WAIT_SECONDS = 30
+
+
+def _dev_log(service: str, message: str) -> None:
+    print(f"[{service}] {message}", flush=True)
+
+
+def _read_stream(stream, service: str) -> None:
+    """Read lines from a subprocess stream and print them with a prefix."""
+    for line in iter(stream.readline, ""):
+        if line:
+            _dev_log(service, line.rstrip("
+"))
+    stream.close()
+
+
+def _start_process(cmd: list[str], service: str, cwd: str | None = None, env: dict | None = None) -> subprocess.Popen:
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        cwd=cwd,
+        env=env,
+    )
+    thread = threading.Thread(target=_read_stream, args=(proc.stdout, service), daemon=True)
+    thread.start()
+    return proc
+
+
+def _get_ngrok_url() -> str | None:
+    """Fetch the public HTTPS URL from ngrok's local API."""
+    try:
+        req = urllib.request.Request(NGROK_API_URL)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        tunnels = data.get("tunnels", [])
+        for tunnel in tunnels:
+            if tunnel.get("proto") == "https":
+                return tunnel["public_url"]
+        # Fallback: return the first tunnel
+        if tunnels:
+            return tunnels[0]["public_url"]
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, KeyError, OSError):
+        pass
+    return None
+
+
+def _wait_for_ngrok() -> str:
+    """Poll ngrok API until a tunnel is available, then return the URL."""
+    _dev_log("ngrok", "Waiting for tunnel to become available...")
+    for _ in range(int(MAX_WAIT_SECONDS / POLL_INTERVAL)):
+        url = _get_ngrok_url()
+        if url:
+            _dev_log("ngrok", f"Tunnel ready: {url}")
+            return url
+        time.sleep(POLL_INTERVAL)
+    raise RuntimeError(
+        "ngrok did not become available. "
+        "Make sure ngrok is installed and you've run 'ngrok config add-authtoken <token>' once."
+    )
+# --- End of added dev server constants and helpers ---
 
 async def app_command(update, context) -> None:
     """/app -- opens the Mini App via an inline button. Kept as an
@@ -242,7 +319,7 @@ def main() -> None:
     # when start_mini_app.py's own standalone mode is already managing
     # this as a subprocess and would otherwise double-launch it).
     mini_app_procs: list = []
-    skip_mini_app = "--no-mini-app" in sys.argv or os.environ.get("DISABLE_MINI_APP") == "1"
+    skip_mini_app = "--no-mini_app" in sys.argv or os.environ.get("DISABLE_MINI_APP") == "1"
     if not skip_mini_app:
         try:
             from start_mini_app import launch_mini_app_stack
@@ -264,7 +341,7 @@ def main() -> None:
         except Exception:
             log.exception("Mini App stack failed to start unexpectedly -- continuing with bot only")
     else:
-        log.info("Skipping Mini App stack (--no-mini-app or DISABLE_MINI_APP=1)")
+        log.info("Skipping Mini App stack (--no-mini_app or DISABLE_MINI_APP=1)")
 
     def _cleanup_mini_app_procs() -> None:
         for proc in mini_app_procs:
@@ -306,6 +383,3 @@ def main() -> None:
     finally:
         _cleanup_mini_app_procs()
 
-
-if __name__ == "__main__":
-    main()

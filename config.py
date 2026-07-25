@@ -25,6 +25,8 @@ class Settings:
     admin_user_ids: frozenset[int] = frozenset()
 
     # Telegram Mini App
+    mini_app_host: str = "127.0.0.1"
+    mini_app_port: int = 8080
     mini_app_url: str | None = None
     mini_app_auth_max_age_seconds: int = 86400
     mini_app_static_dir: Path | None = None
@@ -68,15 +70,27 @@ def load_settings() -> Settings:
         if value.strip().isdigit()
     )
 
-    mini_app_static_dir_str = os.getenv("MINI_APP_STATIC_DIR", "").strip() or None
-    mini_app_static_dir = Path(mini_app_static_dir_str) if mini_app_static_dir_str else None
+    # Mini App settings
+    host = os.getenv("MINI_APP_HOST", "127.0.0.1").strip()
+    port_str = os.getenv("MINI_APP_PORT", "8080").strip()
+    port = int(port_str) if port_str.isdigit() else 8080
+    # Allow overriding with a manually set URL (e.g., from ngrok in dev)
+    # but default to the self-hosted URL.
+    url = os.getenv("MINI_APP_URL") or f"http://{host}:{port}"
+    
+    # Default static dir to the built frontend assets relative to the project root
+    static_dir_default = str(BASE_DIR / "frontend" / "dist")
+    mini_app_static_dir_str = os.getenv("MINI_APP_STATIC_DIR", static_dir_default).strip()
+    mini_app_static_dir = Path(mini_app_static_dir_str)
 
     return Settings(
         telegram_bot_token=token,
         openai_api_key=openai_key,
         openai_model=model,
         admin_user_ids=admin_user_ids,
-        mini_app_url=os.getenv("MINI_APP_URL", "").strip() or None,
+        mini_app_host=host,
+        mini_app_port=port,
+        mini_app_url=url,
         mini_app_auth_max_age_seconds=int(
             (os.getenv("MINI_APP_AUTH_MAX_AGE_SECONDS", "").strip() or "86400")
         ),
