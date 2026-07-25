@@ -49,6 +49,14 @@ class TestSearch:
         results = database.search_customers("ann")
         assert [r["loan_number"] for r in results] == ["L001"]
 
+    def test_search_by_full_name(self, database):
+        """Confirmed bug, now fixed: searching a combined "first last"
+        name previously returned zero results even with an exact match
+        on file, since first_name/last_name are separate columns and
+        neither alone contains the full typed string."""
+        results = database.search_customers("Ann Owens")
+        assert [r["loan_number"] for r in results] == ["L001"]
+
     def test_search_no_match_returns_empty(self, database):
         assert database.search_customers("nonexistent") == []
 

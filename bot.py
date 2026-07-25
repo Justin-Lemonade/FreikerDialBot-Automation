@@ -110,12 +110,16 @@ async def app_command(update, context) -> None:
         return
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+    # Telegram's Bot API has no mechanism to open a WebView with zero
+    # user interaction -- every one of the platform's six WebApp launch
+    # methods (menu button, inline button, keyboard button, inline mode,
+    # direct link, attachment menu) requires exactly one tap. This is
+    # the closest achievable: a single button, no preamble text to read
+    # or scroll past first, no extra confirmation step.
     keyboard = InlineKeyboardMarkup(
         [[InlineKeyboardButton("📱 Open FreikerDial", web_app=WebAppInfo(url=settings.mini_app_url))]]
     )
-    await update.effective_message.reply_text(
-        "Tap below to open the Mini App:", reply_markup=keyboard
-    )
+    await update.effective_message.reply_text("👇", reply_markup=keyboard)
 
 
 async def _post_init(application: Application) -> None:

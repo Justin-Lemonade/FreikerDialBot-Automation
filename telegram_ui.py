@@ -10,6 +10,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from ai_parser import AI_PROMPT
+from customer_ui import handle_potential_edit_block
 from importer import ImporterError, ImportResult, Importer
 from logger import log
 from queue_ui import completion_keyboard, resume as queue_resume
@@ -307,6 +308,15 @@ async def _run_text_import(update: Update, context: ContextTypes.DEFAULT_TYPE, t
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.effective_message.text
+
+    # A pasted-back edit block (see customer_ui.render_editable_block) is
+    # never valid JSON/import content, but check for it explicitly and
+    # first anyway, rather than relying on it merely failing to parse as
+    # an import -- that would produce a confusing "couldn't understand
+    # this" error instead of actually applying the edit.
+    if await handle_potential_edit_block(update, context):
+        return
+
     pending = context.chat_data.get("pending_text_fragment")
     now = time.monotonic()
 

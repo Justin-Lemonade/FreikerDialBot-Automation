@@ -7,11 +7,9 @@ interface Props {
   upcomingCustomer: Customer | null;
   onContinue: () => void;
   onNewSession: () => void;
-  onStatistics: () => void;
-  onSettings: () => void;
 }
 
-export const Home = ({ session, customer, upcomingCustomer, onContinue, onNewSession, onStatistics, onSettings }: Props) => {
+export const Home = ({ session, customer, upcomingCustomer, onContinue, onNewSession }: Props) => {
   const hasQueue = Boolean(session?.customerCount);
 
   return (
@@ -62,21 +60,18 @@ export const Home = ({ session, customer, upcomingCustomer, onContinue, onNewSes
         </button>
       </div>
 
-      {/* Secondary Actions */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={onStatistics}
-          className="min-h-[48px] rounded-[24px] border border-white/10 bg-slate-900 px-5 text-base font-semibold active:scale-[0.98]"
-        >
-          📊 Statistics
-        </button>
-        <button
-          onClick={onSettings}
-          className="min-h-[48px] rounded-[24px] border border-white/10 bg-slate-900 px-5 text-base font-semibold active:scale-[0.98]"
-        >
-          ⚙ Settings
-        </button>
-      </div>
+      {/* Upload -- shell/placeholder only. Importing customer data is
+          currently Telegram-only (screenshot/JSON/text paste directly
+          in chat with the bot); there is no Mini App upload endpoint
+          yet. This is an honest placeholder, not a working feature --
+          see BACKLOG.md's Mini-App-side import item. */}
+      <button
+        disabled
+        title="Not yet available -- import customer data via Telegram chat with the bot for now"
+        className="min-h-[48px] w-full rounded-[24px] border border-dashed border-white/10 bg-slate-900/40 px-5 text-sm font-semibold text-slate-500"
+      >
+        📤 Upload Customers (coming soon — use Telegram chat for now)
+      </button>
     </div>
   );
 };

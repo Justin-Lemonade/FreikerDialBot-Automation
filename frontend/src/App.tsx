@@ -5,6 +5,9 @@ import { Call } from './pages/Call';
 import { Statistics } from './pages/Statistics';
 import { Settings } from './pages/Settings';
 import { SessionComplete } from './pages/SessionComplete';
+import { Commands } from './pages/Commands';
+import { Search } from './pages/Search';
+import { CustomerDetail } from './pages/CustomerDetail';
 import { useSession } from './hooks/useSession';
 import { useCustomer } from './hooks/useCustomer';
 import { useTelegram } from './hooks/useTelegram';
@@ -20,6 +23,7 @@ const App = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [upcomingCustomer, setUpcomingCustomer] = useState<Customer | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
   const { session, loadState, error: sessionError, isStale, refreshSession, applySession } = useSession();
   const { customer, setFromSession } = useCustomer();
@@ -54,7 +58,8 @@ const App = () => {
   // MiniAppService.get_current_session's queue_complete finalization),
   // never a client-side guess.
   useEffect(() => {
-    if (session?.completed && screen !== 'complete' && screen !== 'statistics' && screen !== 'settings') {
+    const exemptScreens: Screen[] = ['complete', 'statistics', 'settings', 'commands', 'search', 'customerDetail'];
+    if (session?.completed && !exemptScreens.includes(screen)) {
       setScreen('complete');
     }
   }, [session?.completed, screen]);
@@ -184,6 +189,30 @@ const App = () => {
       return <Settings />;
     }
 
+    if (screen === 'commands') {
+      return (
+        <Commands
+          onOpenStatistics={() => setScreen('statistics')}
+          onOpenNotes={() => setShowNotes(true)}
+        />
+      );
+    }
+
+    if (screen === 'search') {
+      return (
+        <Search
+          onSelectCustomer={(selected) => {
+            setSelectedCustomerId(selected.id);
+            setScreen('customerDetail');
+          }}
+        />
+      );
+    }
+
+    if (screen === 'customerDetail' && selectedCustomerId) {
+      return <CustomerDetail customerId={selectedCustomerId} onBack={() => setScreen('search')} />;
+    }
+
     if (screen === 'complete') {
       return (
         <SessionComplete
@@ -225,8 +254,6 @@ const App = () => {
         upcomingCustomer={upcomingCustomer}
         onContinue={() => setScreen('call')}
         onNewSession={() => setScreen('call')}
-        onStatistics={() => setScreen('statistics')}
-        onSettings={() => setScreen('settings')}
       />
     );
   };
@@ -238,12 +265,13 @@ const App = () => {
       onNoteDraftChange={setNoteDraft}
       onSaveNote={handleSaveNote}
       onCancelNotes={() => setShowNotes(false)}
-      onToggleNotes={() => setShowNotes((value) => !value)}
       session={session}
       customer={currentCustomer}
-      onOpenStats={() => setScreen('statistics')}
-      onBackHome={() => setScreen('home')}
-      onNext={() => setScreen('call')}
+      onNavigateHome={() => setScreen('home')}
+      onNavigateCommands={() => setScreen('commands')}
+      onNavigateSearch={() => setScreen('search')}
+      onNavigateSettings={() => setScreen('settings')}
+      activeScreen={screen}
       isStale={isStale}
       bannerError={actionError}
       onDismissError={() => setActionError(null)}

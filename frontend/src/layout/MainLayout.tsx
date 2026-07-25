@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Customer, SessionSummary } from '../types';
+import type { Customer, Screen, SessionSummary } from '../types';
 import { ProgressHeader } from '../components/ProgressHeader';
 
 interface Props {
@@ -9,12 +9,13 @@ interface Props {
   onNoteDraftChange: (value: string) => void;
   onSaveNote: () => void;
   onCancelNotes: () => void;
-  onToggleNotes: () => void;
   session: SessionSummary | null;
   customer: Customer | null;
-  onOpenStats: () => void;
-  onBackHome: () => void;
-  onNext: () => void;
+  onNavigateHome: () => void;
+  onNavigateCommands: () => void;
+  onNavigateSearch: () => void;
+  onNavigateSettings: () => void;
+  activeScreen: Screen;
   isStale?: boolean;
   bannerError?: string | null;
   onDismissError?: () => void;
@@ -27,12 +28,13 @@ export const MainLayout = ({
   onNoteDraftChange,
   onSaveNote,
   onCancelNotes,
-  onToggleNotes,
   session,
   customer,
-  onOpenStats,
-  onBackHome,
-  onNext,
+  onNavigateHome,
+  onNavigateCommands,
+  onNavigateSearch,
+  onNavigateSettings,
+  activeScreen,
   isStale,
   bannerError,
   onDismissError,
@@ -76,35 +78,54 @@ export const MainLayout = ({
       {/* 2-4. Current Customer / Primary Actions / Secondary Actions */}
       <main className="flex-1 overflow-y-auto px-4 pb-28 pt-4">{children}</main>
 
-      {/* 5. NAVIGATION -- fixed bottom bar, safe-area aware */}
+      {/* 5. NAVIGATION -- fixed bottom bar, safe-area aware.
+          Home / Commands / Search / Settings, per the requested shell.
+          Statistics and Notes (previously their own bottom-nav buttons)
+          now live inside Commands -- see Commands.tsx. */}
       <nav
         className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-slate-950/95 px-4 pt-3 backdrop-blur"
         style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
       >
         <div className="flex items-center gap-2">
           <button
-            onClick={onBackHome}
-            className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-semibold active:scale-[0.97]"
+            onClick={onNavigateHome}
+            className={`min-h-[48px] flex-1 rounded-2xl border px-4 text-sm font-semibold active:scale-[0.97] ${
+              activeScreen === 'home' || activeScreen === 'call'
+                ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300'
+                : 'border-white/10 bg-slate-900'
+            }`}
           >
             Home
           </button>
           <button
-            onClick={onToggleNotes}
-            className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-semibold active:scale-[0.97]"
+            onClick={onNavigateCommands}
+            className={`min-h-[48px] flex-1 rounded-2xl border px-4 text-sm font-semibold active:scale-[0.97] ${
+              activeScreen === 'commands' || activeScreen === 'statistics'
+                ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300'
+                : 'border-white/10 bg-slate-900'
+            }`}
           >
-            Notes
+            Commands
           </button>
           <button
-            onClick={onOpenStats}
-            className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-semibold active:scale-[0.97]"
+            onClick={onNavigateSearch}
+            className={`min-h-[48px] flex-1 rounded-2xl border px-4 text-sm font-semibold active:scale-[0.97] ${
+              activeScreen === 'search' || activeScreen === 'customerDetail'
+                ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300'
+                : 'border-white/10 bg-slate-900'
+            }`}
           >
-            Stats
+            Search
           </button>
           <button
-            onClick={onNext}
-            className="min-h-[48px] flex-1 rounded-2xl bg-emerald-500 px-4 text-sm font-semibold text-slate-950 active:scale-[0.97]"
+            onClick={onNavigateSettings}
+            className={`min-h-[48px] flex-1 rounded-2xl border px-4 text-sm font-semibold active:scale-[0.97] ${
+              activeScreen === 'settings'
+                ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300'
+                : 'border-white/10 bg-slate-900'
+            }`}
           >
-            Next
+            Settings
           </button>
         </div>
       </nav>
