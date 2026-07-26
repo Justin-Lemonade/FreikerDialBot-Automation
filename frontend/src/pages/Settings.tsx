@@ -1,31 +1,81 @@
+import type { ReactNode } from 'react';
+
+interface SettingRowProps {
+  label: string;
+  description: string;
+  value: string;
+  disabled?: boolean;
+}
+
+const SettingRow = ({ label, description, value, disabled }: SettingRowProps) => (
+  <div
+    className="flex items-center justify-between border-b py-3 last:border-b-0"
+    style={{ borderColor: 'var(--border-frame)', opacity: disabled ? 0.45 : 1 }}
+  >
+    <div>
+      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
+        {label}
+      </p>
+      <p className="font-data text-sm" style={{ color: 'var(--text-muted)' }}>
+        {description}
+      </p>
+    </div>
+    <div className="font-display text-[9px]" style={{ color: disabled ? 'var(--text-dim)' : 'var(--accent-green)' }}>
+      {value}
+    </div>
+  </div>
+);
+
+interface SectionProps {
+  title: string;
+  children: ReactNode;
+}
+
+const Section = ({ title, children }: SectionProps) => (
+  <div className="retro-panel p-4">
+    <p className="mb-2 font-display text-[10px]" style={{ color: 'var(--text-muted)' }}>
+      {title}
+    </p>
+    {children}
+  </div>
+);
+
+/**
+ * Framed, sectioned settings (brief: "boxed settings sections, strong
+ * section separation"). Telegram Theme and Haptics are real, currently-
+ * functioning settings (see useTelegram.ts). Everything else in the
+ * later sections is intentionally not wired yet -- structural
+ * placeholders per the brief's "design the layout so they can be added
+ * later without reworking the whole screen," disabled and labeled
+ * "Coming soon" rather than faked as working.
+ */
 export const Settings = () => {
   return (
-    <div className="space-y-4">
-      <div className="rounded-[32px] border border-white/10 bg-slate-900/80 p-5">
-        <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Mini App</p>
-        <h2 className="mt-2 text-2xl font-semibold">Settings</h2>
-        <p className="mt-2 text-sm text-slate-400">Theme-aware, full-screen, and touch optimized for calling sessions.</p>
-      </div>
+    <div className="space-y-3">
+      <Section title="APP">
+        <SettingRow label="Telegram Theme" description="Uses WebApp theme colors" value="ON" />
+        <SettingRow label="Haptics" description="Vibrations for key actions" value="ON" />
+      </Section>
 
-      <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-4">
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-800/70 px-3 py-3">
-          <div>
-            <p className="font-semibold">Telegram Theme</p>
-            <p className="text-sm text-slate-400">Uses WebApp theme colors</p>
-          </div>
-          <div className="text-emerald-300">On</div>
-        </div>
-      </div>
+      <Section title="CALLING BEHAVIOR">
+        <SettingRow label="Recall Attempts" description="Retries before skipping" value="—" disabled />
+        <SettingRow label="Call Delay" description="Pause between calls" value="—" disabled />
+      </Section>
 
-      <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-4">
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-800/70 px-3 py-3">
-          <div>
-            <p className="font-semibold">Haptics</p>
-            <p className="text-sm text-slate-400">Vibrations for key actions</p>
-          </div>
-          <div className="text-emerald-300">Enabled</div>
-        </div>
-      </div>
+      <Section title="DISPLAY">
+        <SettingRow label="Density" description="Compact vs. detailed cards" value="—" disabled />
+        <SettingRow label="Visible Fields" description="Which data shows by default" value="—" disabled />
+        <SettingRow label="Animation Intensity" description="Motion for transitions/glow" value="—" disabled />
+      </Section>
+
+      <Section title="SEARCH & QUEUE">
+        <SettingRow label="Search Defaults" description="Default match fields" value="—" disabled />
+        <SettingRow label="Queue Behavior" description="Ordering and skip rules" value="—" disabled />
+      </Section>
+
+      <p className="text-center font-data text-sm" style={{ color: 'var(--text-dim)' }}>
+        Settings marked — are planned, not yet wired to the backend.
+      </p>
     </div>
   );
 };

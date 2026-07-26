@@ -13,11 +13,15 @@ export const SessionComplete = ({ session, onRetry, onHome }: Props) => {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[32px] border border-emerald-400/20 bg-gradient-to-b from-emerald-500/10 to-slate-900 p-6 text-center shadow-2xl">
-        <p className="text-[11px] uppercase tracking-[0.3em] text-emerald-300">Session complete</p>
-        <h2 className="mt-3 text-3xl font-semibold">{session?.customerCount ?? 0} customers processed</h2>
+      <div className="retro-card p-6 text-center" style={{ borderColor: 'var(--accent-green-strong)' }}>
+        <p className="font-display text-[10px]" style={{ color: 'var(--accent-green)' }}>
+          SESSION COMPLETE
+        </p>
+        <h2 className="mt-3 font-data text-3xl" style={{ color: 'var(--text-primary)' }}>
+          {session?.customerCount ?? 0} customers processed
+        </h2>
         {hasBreakdown && (
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 font-data text-lg" style={{ color: 'var(--text-muted)' }}>
             {contacted} contacted • {didNotAnswer} didn&apos;t answer
           </p>
         )}
@@ -26,19 +30,24 @@ export const SessionComplete = ({ session, onRetry, onHome }: Props) => {
       <div className="grid grid-cols-2 gap-3">
         <button
           onClick={onRetry}
-          className="min-h-[56px] rounded-[28px] border border-white/10 bg-slate-900 px-5 text-base font-semibold active:scale-[0.98]"
+          className="retro-button min-h-[56px] font-display text-[10px]"
+          style={{ border: '1px solid var(--border-frame)', color: 'var(--text-primary)' }}
         >
-          Retry Didn&apos;t Answer
+          RETRY NO-ANSWER
         </button>
-        <button className="min-h-[56px] rounded-[28px] border border-white/10 bg-slate-900 px-5 text-base font-semibold active:scale-[0.98]">
-          Export
+        <button
+          className="retro-button min-h-[56px] font-display text-[10px]"
+          style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
+        >
+          EXPORT
         </button>
       </div>
       <button
         onClick={onHome}
-        className="min-h-[56px] w-full rounded-[28px] bg-emerald-500 px-5 text-lg font-semibold text-slate-950 active:scale-[0.98]"
+        className="retro-button min-h-[56px] w-full font-display text-sm"
+        style={{ background: 'var(--accent-green)', color: 'var(--accent-green-text)', border: '2px solid var(--accent-green-strong)' }}
       >
-        Return Home
+        RETURN HOME
       </button>
     </div>
   );

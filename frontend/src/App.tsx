@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MainLayout } from './layout/MainLayout';
 import { Home } from './pages/Home';
-import { Call } from './pages/Call';
 import { Statistics } from './pages/Statistics';
-import { Settings } from './pages/Settings';
 import { SessionComplete } from './pages/SessionComplete';
 import { Commands } from './pages/Commands';
 import { Search } from './pages/Search';
@@ -13,16 +11,16 @@ import { useCustomer } from './hooks/useCustomer';
 import { useTelegram } from './hooks/useTelegram';
 import { useCallTimer } from './hooks/useCallTimer';
 import { api, ApiError } from './api/client';
-import type { Customer, Screen } from './types';
+import type { Screen } from './types';
 
 const App = () => {
   const [screen, setScreen] = useState<Screen>('home');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [outcome, setOutcome] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [upcomingCustomer, setUpcomingCustomer] = useState<Customer | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
   const { session, loadState, error: sessionError, isStale, refreshSession, applySession } = useSession();
@@ -30,10 +28,10 @@ const App = () => {
   const telegram = useTelegram();
   const timer = useCallTimer();
 
-  // Poll every 5s so the progress bar / next-customer stay live even if
-  // the operator leaves the app idle on one screen -- matches PRIORITY 1:
-  // the progress bar must always reflect real, current queue state, not
-  // a snapshot from whenever the screen last mounted.
+  // Poll every 5s so the progress bar / current customer stay live even
+  // if the operator leaves the app idle on one screen -- the progress
+  // display must always reflect real, current queue state, not a
+  // snapshot from whenever the screen last mounted.
   useEffect(() => {
     refreshSession();
     const interval = setInterval(refreshSession, 5000);
@@ -56,9 +54,10 @@ const App = () => {
   // Auto-navigate to the completion screen the moment the backend says
   // the queue is done -- session.completed is real backend state (see
   // MiniAppService.get_current_session's queue_complete finalization),
-  // never a client-side guess.
+  // never a client-side guess. Settings is a drawer now, not a screen,
+  // so it doesn't need to be in this exemption list at all.
   useEffect(() => {
-    const exemptScreens: Screen[] = ['complete', 'statistics', 'settings', 'commands', 'search', 'customerDetail'];
+    const exemptScreens: Screen[] = ['complete', 'statistics', 'commands', 'search', 'customerDetail'];
     if (session?.completed && !exemptScreens.includes(screen)) {
       setScreen('complete');
     }
@@ -66,32 +65,9 @@ const App = () => {
 
   const currentCustomer = useMemo(() => customer ?? session?.currentCustomer ?? null, [customer, session]);
 
-  // Preload the next customer while the operator is still working the
-  // current one, so the transition after an outcome feels instant --
-  // reuses the existing, tested /queue/upcoming (QueueEngine-backed,
-  // read-only) endpoint rather than adding any new queue logic here.
-  // Best-effort only: if this fails, the operator experience is
-  // unaffected (submitCallResult's own response already carries the
-  // real nextCustomer regardless of whether this preload succeeded).
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .getUpcoming()
-      .then((next) => {
-        if (!cancelled) setUpcomingCustomer(next && next.id ? next : null);
-      })
-      .catch(() => {
-        if (!cancelled) setUpcomingCustomer(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [currentCustomer?.id]);
-
   const onStartCall = useCallback(async () => {
     if (!currentCustomer) return;
     timer.reset();
-    setScreen('call');
     setActionError(null);
     try {
       await api.startCall(currentCustomer.id);
@@ -105,11 +81,6 @@ const App = () => {
       window.location.href = `tel:${currentCustomer.phone}`;
     }
   }, [currentCustomer, timer, telegram]);
-
-  const onReturnFromCall = useCallback(() => {
-    setOutcome(null);
-    telegram.haptic('light');
-  }, [telegram]);
 
   const handleOutcome = useCallback(
     async (nextOutcome: string) => {
@@ -136,9 +107,6 @@ const App = () => {
         setOutcome(null);
         setShowNotes(false);
         setNoteDraft('');
-        if (!result.session?.completed) {
-          setScreen('home');
-        }
       } catch (err) {
         setActionError(err instanceof ApiError ? err.message : 'Could not record that outcome. Please try again.');
         setIsSubmitting(false);
@@ -163,19 +131,24 @@ const App = () => {
   const renderScreen = () => {
     if (loadState === 'loading' && !session) {
       return (
-        <div className="flex min-h-[240px] items-center justify-center text-slate-400">Loading queue…</div>
+        <div className="flex min-h-[240px] items-center justify-center font-data text-lg" style={{ color: 'var(--text-muted)' }}>
+          Loading queue…
+        </div>
       );
     }
 
     if (loadState === 'error' && !session) {
       return (
-        <div className="space-y-3 rounded-[24px] border border-red-500/20 bg-red-500/5 p-5 text-center">
-          <p className="text-sm text-red-300">{sessionError || 'Could not reach the server.'}</p>
+        <div className="space-y-3 p-5 text-center retro-panel">
+          <p className="font-data text-lg" style={{ color: 'var(--accent-red)' }}>
+            {sessionError || 'Could not reach the server.'}
+          </p>
           <button
             onClick={refreshSession}
-            className="min-h-[48px] rounded-2xl border border-white/10 bg-slate-900 px-5 text-sm font-semibold active:scale-[0.98]"
+            className="retro-button min-h-[48px] font-display text-[10px]"
+            style={{ border: '1px solid var(--border-frame)', color: 'var(--text-primary)' }}
           >
-            Retry
+            RETRY
           </button>
         </div>
       );
@@ -183,10 +156,6 @@ const App = () => {
 
     if (screen === 'statistics') {
       return <Statistics />;
-    }
-
-    if (screen === 'settings') {
-      return <Settings />;
     }
 
     if (screen === 'commands') {
@@ -232,28 +201,23 @@ const App = () => {
       );
     }
 
-    if (screen === 'call') {
-      return (
-        <Call
-          customer={currentCustomer}
-          outcome={outcome}
-          isSubmitting={isSubmitting}
-          durationLabel={timer.getLabel()}
-          onStartCall={onStartCall}
-          onOutcome={handleOutcome}
-          onOpenNotes={() => setShowNotes(true)}
-          onReturn={onReturnFromCall}
-        />
-      );
-    }
-
+    // Home IS the calling workflow (per the reference images: the
+    // active customer card, Call button, and outcome buttons all live
+    // on the Home tab itself -- there is no separate Call screen/tab).
     return (
       <Home
         session={session}
         customer={currentCustomer}
-        upcomingCustomer={upcomingCustomer}
-        onContinue={() => setScreen('call')}
-        onNewSession={() => setScreen('call')}
+        outcome={outcome}
+        isSubmitting={isSubmitting}
+        durationLabel={timer.getLabel()}
+        onStartCall={onStartCall}
+        onOutcome={handleOutcome}
+        onOpenNotes={() => setShowNotes(true)}
+        onOpenUpload={() => {
+          /* No-op: the Upload button is disabled (see Home.tsx) until a
+             real Mini App import endpoint exists. */
+        }}
       />
     );
   };
@@ -270,8 +234,10 @@ const App = () => {
       onNavigateHome={() => setScreen('home')}
       onNavigateCommands={() => setScreen('commands')}
       onNavigateSearch={() => setScreen('search')}
-      onNavigateSettings={() => setScreen('settings')}
       activeScreen={screen}
+      isSettingsOpen={isSettingsOpen}
+      onOpenSettings={() => setIsSettingsOpen(true)}
+      onCloseSettings={() => setIsSettingsOpen(false)}
       isStale={isStale}
       bannerError={actionError}
       onDismissError={() => setActionError(null)}

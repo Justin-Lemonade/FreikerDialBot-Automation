@@ -3,34 +3,55 @@ interface Props {
   onOpenNotes: () => void;
 }
 
+interface CommandButtonProps {
+  label: string;
+  onClick?: () => void;
+  color: string;
+  disabled?: boolean;
+}
+
+const CommandButton = ({ label, onClick, color, disabled }: CommandButtonProps) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className="retro-button min-h-[52px] w-full font-display text-xs disabled:cursor-not-allowed disabled:opacity-40"
+    style={{ background: color, color: 'var(--bg-void)', border: `2px solid ${color}` }}
+  >
+    [ {label} ]
+  </button>
+);
+
 /**
- * Secondary-actions page. Statistics and Notes previously lived as
- * bottom-nav buttons; the requested nav shell is Home/Commands/Search/
- * Settings, so they moved here rather than losing a top-level slot.
- * More actions can be added as rows here as they're built (e.g. queue
- * pause/resume, blacklist management) without needing new nav slots.
+ * Secondary-actions page (image 3 reference: bracket-style command
+ * buttons + a "type command" field). Statistics and Notes previously
+ * lived as bottom-nav buttons; the requested nav shell is Home/
+ * Commands/Search/Settings, so they moved here rather than losing a
+ * top-level slot. The free-text input below is a structural
+ * placeholder -- there's no command-parsing backend yet, so it's
+ * disabled and honest about that rather than faking a working REPL.
  */
 export const Commands = ({ onOpenStatistics, onOpenNotes }: Props) => {
   return (
-    <div className="space-y-3">
-      <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-4">
-        <p className="mb-3 text-sm font-semibold text-slate-300">Commands</p>
-        <div className="space-y-2">
-          <button
-            onClick={onOpenStatistics}
-            className="flex min-h-[56px] w-full items-center justify-between rounded-2xl border border-white/10 bg-slate-800/70 px-4 active:scale-[0.98]"
-          >
-            <span className="font-semibold">📊 Statistics</span>
-            <span className="text-slate-400">›</span>
-          </button>
-          <button
-            onClick={onOpenNotes}
-            className="flex min-h-[56px] w-full items-center justify-between rounded-2xl border border-white/10 bg-slate-800/70 px-4 active:scale-[0.98]"
-          >
-            <span className="font-semibold">📝 Session Notes</span>
-            <span className="text-slate-400">›</span>
-          </button>
+    <div className="space-y-4">
+      <div className="retro-panel p-4">
+        <p className="mb-3 font-display text-[10px]" style={{ color: 'var(--accent-green)' }}>
+          SUGGESTED COMMANDS
+        </p>
+        <div className="space-y-2.5">
+          <CommandButton label="VIEW STATISTICS" onClick={onOpenStatistics} color="#5b6ecf" />
+          <CommandButton label="SESSION NOTES" onClick={onOpenNotes} color="#4f9dff" />
+          <CommandButton label="PAUSE QUEUE" color="#8a5cd6" disabled />
+          <CommandButton label="EXPORT DATA" color="#c95050" disabled />
         </div>
+      </div>
+
+      <div className="retro-panel p-4">
+        <input
+          disabled
+          placeholder="Type command… (coming soon)"
+          className="w-full px-3 py-3 font-data text-lg outline-none disabled:cursor-not-allowed"
+          style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-frame)', color: 'var(--text-dim)' }}
+        />
       </div>
     </div>
   );

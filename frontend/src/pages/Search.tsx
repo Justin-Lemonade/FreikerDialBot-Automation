@@ -42,37 +42,38 @@ export const Search = ({ onSelectCustomer }: Props) => {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-4">
-        <p className="mb-3 text-sm font-semibold text-slate-300">Search Customers</p>
+      <div className="retro-panel p-4">
+        <p className="mb-3 font-display text-[9px]" style={{ color: 'var(--text-muted)' }}>
+          FIND THE CLIENT'S
+        </p>
         <input
           value={query}
-          onChange={(event) => {
-            const value = event.target.value;
-            setQuery(value);
-          }}
+          onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') runSearch(query);
           }}
           placeholder="Name, loan number, or phone"
-          className="min-h-[48px] w-full rounded-2xl border border-white/10 bg-slate-800 px-4 text-base outline-none placeholder:text-slate-500"
+          className="min-h-[48px] w-full px-4 font-data text-lg outline-none"
+          style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-frame)', color: 'var(--text-primary)' }}
         />
         <button
           onClick={() => runSearch(query)}
           disabled={isSearching}
-          className="mt-3 min-h-[48px] w-full rounded-2xl bg-emerald-500 px-4 text-sm font-semibold text-slate-950 active:scale-[0.98] disabled:opacity-60"
+          className="retro-button mt-3 min-h-[48px] w-full font-display text-xs disabled:opacity-60"
+          style={{ background: 'var(--accent-green)', color: 'var(--accent-green-text)', border: '2px solid var(--accent-green-strong)' }}
         >
-          {isSearching ? 'Searching…' : '🔍 Search'}
+          {isSearching ? 'SEARCHING…' : '🔍 SEARCH'}
         </button>
       </div>
 
       {error && (
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-center text-sm text-red-300">
+        <div className="p-4 text-center font-data text-lg" style={{ border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
           {error}
         </div>
       )}
 
       {hasSearched && !error && results.length === 0 && (
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 text-center text-sm text-slate-400">
+        <div className="retro-panel p-4 text-center font-data text-lg" style={{ color: 'var(--text-muted)' }}>
           No customers found matching "{query}".
         </div>
       )}
@@ -83,14 +84,19 @@ export const Search = ({ onSelectCustomer }: Props) => {
             <button
               key={customer.id}
               onClick={() => onSelectCustomer(customer)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-left active:scale-[0.98]"
+              className="retro-button w-full px-4 py-3 text-left"
+              style={{ background: 'var(--bg-panel-solid)', border: '1px solid var(--border-frame)' }}
             >
-              <p className="font-semibold">{customer.name || '(name missing)'}</p>
-              <p className="text-sm text-slate-400">
+              <p className="font-data text-xl" style={{ color: 'var(--text-primary)' }}>
+                {customer.name || '(name missing)'}
+              </p>
+              <p className="font-data text-base" style={{ color: 'var(--text-muted)' }}>
                 {customer.loanNumber} · {customer.phone || 'no phone on file'}
               </p>
               {customer.isBlacklisted && (
-                <p className="mt-1 text-xs font-semibold text-red-300">🚫 Blacklisted</p>
+                <p className="mt-1 font-display text-[8px]" style={{ color: 'var(--accent-red)' }}>
+                  🚫 BLACKLISTED
+                </p>
               )}
             </button>
           ))}

@@ -35,46 +35,58 @@ export const CustomerDetail = ({ customerId, onBack }: Props) => {
     <div className="space-y-4">
       <button
         onClick={onBack}
-        className="min-h-[44px] rounded-2xl border border-white/10 bg-slate-900 px-4 text-sm font-semibold active:scale-[0.98]"
+        className="retro-button min-h-[44px] px-4 font-display text-[10px]"
+        style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
       >
-        ← Back to Search
+        ← BACK TO SEARCH
       </button>
 
       {error && (
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-center text-sm text-red-300">
+        <div className="p-4 text-center font-data text-lg" style={{ border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
           {error}
         </div>
       )}
 
       {!record && !error && (
-        <div className="flex min-h-[200px] items-center justify-center text-slate-400">Loading…</div>
+        <div className="flex min-h-[200px] items-center justify-center font-data text-lg" style={{ color: 'var(--text-muted)' }}>
+          Loading…
+        </div>
       )}
 
       {record && (
         <>
-          <div className="rounded-[28px] border border-white/10 bg-slate-900/70 p-4">
+          <div className="retro-card p-4">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-lg font-semibold">{record.name || '(name missing)'}</p>
+              <p className="font-data text-xl" style={{ color: 'var(--text-primary)' }}>
+                {record.name || '(name missing)'}
+              </p>
               {record.isBlacklisted && (
-                <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-300">
-                  🚫 Blacklisted
+                <span
+                  className="px-2 py-1 font-display text-[8px]"
+                  style={{ background: 'var(--accent-red-text)', color: 'var(--accent-red)' }}
+                >
+                  🚫 BLACKLISTED
                 </span>
               )}
             </div>
-            <p className="text-sm text-slate-400">{record.loanNumber}</p>
-            <div className="mt-3 space-y-1 text-sm">
+            <p className="font-data text-base" style={{ color: 'var(--text-muted)' }}>
+              {record.loanNumber}
+            </p>
+            <div className="mt-3 space-y-1 font-data text-lg" style={{ color: 'var(--text-primary)' }}>
               <p>📞 {record.phone || '—'}</p>
               <p>💰 Balance: {record.balance || '—'}</p>
-              <p>📆 Days Overdue: {record.daysLate || '—'}</p>
+              <p style={{ color: 'var(--accent-red)' }}>📆 Days Overdue: {record.daysLate || '—'}</p>
               <p>💵 Monthly Payment: {record.monthlyPayment || '—'}</p>
             </div>
           </div>
 
           {record.notes.length > 0 && (
-            <div className="rounded-[24px] border border-white/10 bg-slate-900/60 p-4">
-              <p className="mb-2 text-sm font-semibold text-slate-300">Notes</p>
+            <div className="retro-panel p-4">
+              <p className="mb-2 font-display text-[9px]" style={{ color: 'var(--text-muted)' }}>
+                NOTES
+              </p>
               {record.notes.map((note, index) => (
-                <p key={`${index}-${note.slice(0, 20)}`} className="text-sm text-slate-400">
+                <p key={`${index}-${note.slice(0, 20)}`} className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
                   • {note}
                 </p>
               ))}
@@ -82,10 +94,12 @@ export const CustomerDetail = ({ customerId, onBack }: Props) => {
           )}
 
           {record.history.length > 0 && (
-            <div className="rounded-[24px] border border-white/10 bg-slate-900/60 p-4">
-              <p className="mb-2 text-sm font-semibold text-slate-300">History</p>
+            <div className="retro-panel p-4">
+              <p className="mb-2 font-display text-[9px]" style={{ color: 'var(--text-muted)' }}>
+                HISTORY
+              </p>
               {record.history.slice(0, 10).map((event, index) => (
-                <p key={`${event.id ?? index}`} className="text-xs text-slate-400">
+                <p key={`${event.id ?? index}`} className="font-data text-base" style={{ color: 'var(--text-muted)' }}>
                   {event.event_timestamp} — {event.event_type}
                 </p>
               ))}

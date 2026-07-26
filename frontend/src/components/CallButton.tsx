@@ -9,7 +9,13 @@ export const CallButton = ({ label, onClick, disabled }: Props) => {
     <button
       onClick={onClick}
       disabled={disabled}
-      className="w-full rounded-[28px] bg-emerald-500 px-5 py-4 text-lg font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+      className="retro-button min-h-[56px] w-full font-display text-sm disabled:cursor-not-allowed disabled:opacity-50"
+      style={{
+        background: 'var(--accent-green)',
+        color: 'var(--accent-green-text)',
+        border: '2px solid var(--accent-green-strong)',
+        boxShadow: disabled ? 'none' : '0 3px 0 var(--accent-green-strong)',
+      }}
     >
       {label}
     </button>
