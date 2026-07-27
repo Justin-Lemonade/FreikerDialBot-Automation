@@ -84,6 +84,24 @@ reasoning.
   `Home.tsx`'s "Next up" card — previously mislabeled and actually
   re-displaying the *current* customer — now shows the real preloaded
   one, with the current customer getting its own correctly-labeled card.
+- ~~**CI's "Backend tests (Python)" job has failed on every single run
+  since CI was introduced (commit `c521a6f`) — 7/7 runs, always at test
+  *collection*, never actually executing a test.**~~ — **root-caused and
+  fixed.** `pytest tests/ -q` (the exact command CI runs) cannot import
+  repo-root modules (`database`, `config`, `backend`, etc.) from files
+  under `tests/`, because nothing put the repo root on `sys.path` for
+  that invocation style. `python -m pytest tests/ -q` — the command used
+  to produce every "N passed" figure in this file and in
+  `PROJECT_STATUS.md` — masked this completely, because `python -m`
+  always prepends the current working directory to `sys.path` on its
+  own; bare `pytest` does not. Confirmed by reproducing CI exactly
+  (fresh venv, fresh `pip install`, CI's dummy env vars, bare `pytest`
+  binary): 14/14 test modules failed to collect with
+  `ModuleNotFoundError`. Fixed with a new `pytest.ini` (`pythonpath = .`),
+  which fixes both invocation styles identically rather than relying on
+  `python -m`'s side effect. Re-verified after the fix: bare `pytest`
+  and `python -m pytest` both now pass 264/264. No CI workflow change
+  needed — `ci.yml`'s existing `pytest tests/ -q` line now works as-is.
 
 ## Still open
 
@@ -183,7 +201,14 @@ reasoning.
 ### Pre-existing, unrelated to any of this work
 
 16. `test_import_pipeline.py::TestMalformedAndAdversarialInputs::test_bare_scalar_text_is_routed_to_ai_parser_not_json_validation`
-    fails on the original, unmodified codebase too (reconfirmed across
-    three passes now). Left alone.
+    — **status changed, cause not identified.** Previously reconfirmed
+    failing across three separate passes. Now passes consistently (3/3
+    runs) as of commit `0fea725`, with neither `ai_parser.py`,
+    `importer.py`, nor the test itself changed since it was last
+    confirmed failing (commit `f91e405`). Most likely explanation is an
+    environment/dependency difference rather than a code fix, since
+    nothing in the diff touches this path — but that's inference, not
+    confirmed. Flagging the discrepancy rather than quietly relabeling it
+    "fixed." Worth re-checking if it resurfaces.
 17. `test_admin_commands.py` has a pre-existing unused `import sqlite3`.
     Cosmetic, not introduced by any of this work.

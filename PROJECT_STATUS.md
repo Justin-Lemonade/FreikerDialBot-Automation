@@ -1,7 +1,8 @@
 # PROJECT_STATUS.md
 
-Last verified against commit: f91e405bbbccb5ea452ad8ed3f2cb9ac7361e1be, plus this commit's own changes (launch-path consolidation + blacklist-completion fix -- see below)
-Last updated: 2026-07-24
+Last verified against commit: 0fea725 (retro sci-fi redesign), plus this
+pass's own change (CI collection-failure root-cause fix -- see below)
+Last updated: 2026-07-27
 
 Quick-reference state for a new AI session. For architecture and rules,
 see `AGENTS.md`. For the full open-issues list, see `BACKLOG.md`. This
@@ -62,22 +63,34 @@ make — see `SETUP_AFTER_CLAUDE.md`.
 
 ## What is known to be broken?
 
+- Nothing currently. As of this pass, CI's "Backend tests (Python)" job
+  had failed on **every run since CI was introduced** (7/7, always at
+  test collection, never at an actual test) — root-caused and fixed this
+  pass. See `BACKLOG.md`'s Resolved section for the full explanation;
+  short version: bare `pytest` (what CI runs) couldn't import repo-root
+  modules, only `python -m pytest` (what past sessions ran locally)
+  could. Fixed with `pytest.ini` (`pythonpath = .`), no CI YAML change
+  needed.
 - `test_import_pipeline.py::TestMalformedAndAdversarialInputs::test_bare_scalar_text_is_routed_to_ai_parser_not_json_validation`
-  — pre-existing failure, confirmed across multiple passes, not
-  introduced by any recent work. Not currently blocking anything (excluded
-  from the "251 passed" count below intentionally — see that test file
-  for why it's a known, accepted gap).
+  — previously documented here as a confirmed, persistent failure. Now
+  passes consistently (3/3) with no changes to the files it exercises.
+  Left as an open discrepancy rather than declared "fixed" — see
+  `BACKLOG.md` item 16.
 
 ## What was last verified, and how?
 
-- **Commit:** `f2e6acc5c5dd6e227d77fa4196f2cc7ac0906b7c`
-- **Backend tests:** 251 passed, 0 failed — run directly against a fresh
-  clone of this commit, not assumed from a prior session.
-- **Frontend:** `tsc -b --noEmit` clean, `npm run build` succeeds — same,
-  run fresh against this commit.
-- **CI:** Did not exist before this pass. Added in `.github/workflows/ci.yml`
-  — check the Actions tab for its result on this commit going forward,
-  rather than re-running the full suite manually every session.
+- **Commit:** `0fea725` (prior to this pass's own `pytest.ini` addition)
+- **Backend tests:** 264 passed, 0 failed — run directly against a fresh
+  clone of this commit, not assumed from a prior session. Verified with
+  *both* `python -m pytest tests/ -q` and bare `pytest tests/ -q` (the
+  latter matching CI's actual invocation exactly), in a fresh venv, with
+  CI's exact dummy env vars. Both pass identically after this pass's fix.
+- **Frontend:** not re-checked this pass (CI's frontend job was already
+  green on this commit — see below); no frontend files touched.
+- **CI:** was added several passes ago but had never actually run
+  successfully — see "known to be broken," now fixed. Check the Actions
+  tab on the next commit to confirm the fix holds in the real CI
+  environment, not just this reproduction.
 
 ## Known documentation drift (see AGENTS.md for the full rule)
 
