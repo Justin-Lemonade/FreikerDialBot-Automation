@@ -107,8 +107,7 @@ def _read_stream(stream, service: str) -> None:
     """Read lines from a subprocess stream and print them with a prefix."""
     for line in iter(stream.readline, ""):
         if line:
-            _dev_log(service, line.rstrip("
-"))
+            _dev_log(service, line.rstrip("\n"))
     stream.close()
 
 

@@ -126,11 +126,7 @@ def launch_mini_app_stack(
     # start actually depend on ngrok, so a missing ngrok binary should
     # degrade gracefully, not take down everything else with it.
     ngrok_available = shutil.which("ngrok") is not None
-    if ngrok_available:
-        _log("ngrok", "Stopping any existing ngrok tunnels...")
-        subprocess.run(["ngrok", "kill"], check=False)
-        time.sleep(1)
-    else:
+    if not ngrok_available:
         _log(
             "ngrok",
             "ngrok not found on PATH -- skipping tunnel setup. "
@@ -148,7 +144,7 @@ def launch_mini_app_stack(
     dist_dir = frontend_dir / "dist"
     _log("frontend", "Building frontend (npm run build)...")
     build_result = subprocess.run(
-        ["npm", "run", "build"],
+        ["npm.cmd", "run", "build"],
         cwd=str(frontend_dir),
         capture_output=True,
         text=True,
@@ -169,7 +165,7 @@ def launch_mini_app_stack(
     env = os.environ.copy()
     env["MINI_APP_STATIC_DIR"] = str(dist_dir)
     backend_proc = _start_process(
-        [sys.executable, "mini_app_api.py"],
+        [sys.executable, "mini_app_api.py", "0.0.0.0", "8000"],
         "backend",
         cwd=str(base_dir),
         env=env,
