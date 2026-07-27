@@ -1,4 +1,4 @@
-export type Screen = 'home' | 'call' | 'statistics' | 'settings' | 'complete' | 'search' | 'customerDetail';
+export type Screen = 'home' | 'commands' | 'search' | 'statistics' | 'complete' | 'customerDetail';
 
 /**
  * Mirrors MiniAppService._customer_payload() exactly. Financial/status

@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react';
+
 interface Props {
   currentIndex: number;
   totalCount: number;
@@ -21,51 +23,104 @@ const formatEstimatedRemaining = (remaining: number, averageTime: string): strin
   const perCustomerSeconds = parseAverageTimeToSeconds(averageTime);
   if (!perCustomerSeconds || !remaining) return '—';
   const totalMinutes = Math.round((remaining * perCustomerSeconds) / 60);
-  if (totalMinutes < 1) return '<1 minute';
-  if (totalMinutes === 1) return '1 minute';
-  if (totalMinutes < 60) return `${totalMinutes} minutes`;
+  if (totalMinutes < 1) return '<1 min';
+  if (totalMinutes === 1) return '1 min';
+  if (totalMinutes < 60) return `${totalMinutes} min`;
   const hours = Math.floor(totalMinutes / 60);
   const mins = totalMinutes % 60;
   return mins ? `${hours}h ${mins}m` : `${hours}h`;
 };
 
-const FILLED_BLOCK = '█';
-const EMPTY_BLOCK = '░';
-const BAR_LENGTH = 18;
+const SEGMENT_COUNT = 20;
 
-const renderBlockBar = (percent: number): string => {
-  const clamped = Math.max(0, Math.min(100, percent));
-  const filled = Math.round((clamped / 100) * BAR_LENGTH);
-  return FILLED_BLOCK.repeat(filled) + EMPTY_BLOCK.repeat(BAR_LENGTH - filled);
-};
-
+/**
+ * Segmented / battery-style progress display (image 5/6 reference),
+ * built from real DOM cells rather than a single filled bar -- this is
+ * what lets each cell "charge up" individually and glow when progress
+ * advances, per the brief's recharge-animation requirement. Purely
+ * presentational: percent/count come straight from the backend
+ * (session.progress), nothing here computes progress itself.
+ */
 export const ProgressHeader = ({ currentIndex, totalCount, progressPercent, remaining, averageTime }: Props) => {
   const estimatedLabel = formatEstimatedRemaining(remaining, averageTime);
+  const filledSegments = Math.round((Math.max(0, Math.min(100, progressPercent)) / 100) * SEGMENT_COUNT);
+
+  // Track the previous filled-segment count and current-index so we can
+  // briefly flag "just advanced" cells/number for the glow/pulse
+  // animation, without needing any animation library.
+  const previousFilledRef = useRef(filledSegments);
+  const previousIndexRef = useRef(currentIndex);
+  const [justCharged, setJustCharged] = useState(false);
+  const [justIncremented, setJustIncremented] = useState(false);
+
+  useEffect(() => {
+    if (filledSegments > previousFilledRef.current) {
+      setJustCharged(true);
+      const timeout = setTimeout(() => setJustCharged(false), 650);
+      previousFilledRef.current = filledSegments;
+      return () => clearTimeout(timeout);
+    }
+    previousFilledRef.current = filledSegments;
+  }, [filledSegments]);
+
+  useEffect(() => {
+    if (currentIndex > previousIndexRef.current) {
+      setJustIncremented(true);
+      const timeout = setTimeout(() => setJustIncremented(false), 550);
+      previousIndexRef.current = currentIndex;
+      return () => clearTimeout(timeout);
+    }
+    previousIndexRef.current = currentIndex;
+  }, [currentIndex]);
 
   return (
     <div
-      className="sticky top-0 z-20 rounded-b-[28px] border-b border-white/10 bg-slate-900/95 px-4 pb-4 backdrop-blur"
-      style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+      className="sticky top-0 z-20 border-b-2 px-4 pb-3 backdrop-blur"
+      style={{
+        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+        background: 'var(--bg-panel-solid)',
+        borderColor: 'var(--border-frame)',
+      }}
       role="status"
       aria-live="polite"
       aria-label={`${currentIndex} of ${totalCount} customers, ${progressPercent}% complete`}
     >
-      <div
-        className="mb-2 select-none overflow-hidden whitespace-nowrap font-mono text-[13px] leading-none text-emerald-400"
-        aria-hidden="true"
-      >
-        {renderBlockBar(progressPercent)}
-      </div>
-
-      <div className="flex items-baseline justify-between">
-        <span className="text-base font-semibold text-slate-100">
-          {currentIndex} of {totalCount} Customers
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <span className="font-display text-[10px]" style={{ color: 'var(--text-muted)' }}>
+          CUSTOMER PROGRESS
         </span>
-        <span className="text-base font-bold text-emerald-400">{progressPercent}%</span>
+        <span
+          className={`font-display text-xs ${justIncremented ? 'progress-count is-pulsing' : 'progress-count'}`}
+          style={{ color: 'var(--accent-green)' }}
+        >
+          {progressPercent}%
+        </span>
       </div>
 
-      <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
-        <span>Estimated Remaining: {estimatedLabel}</span>
+      <div className="mb-2 flex gap-[3px]" aria-hidden="true">
+        {Array.from({ length: SEGMENT_COUNT }, (_, index) => {
+          const isFilled = index < filledSegments;
+          const isNewest = isFilled && index === filledSegments - 1 && justCharged;
+          return (
+            <div
+              key={index}
+              className={`h-3 flex-1 rounded-[2px] ${isNewest ? 'progress-cell is-charging' : ''}`}
+              style={{
+                background: isFilled ? 'var(--accent-green)' : 'var(--bg-panel-raised)',
+                border: `1px solid ${isFilled ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
+              }}
+            />
+          );
+        })}
+      </div>
+
+      <div className="flex items-baseline justify-between font-data text-lg">
+        <span style={{ color: 'var(--text-primary)' }}>
+          {currentIndex} / {totalCount} customers
+        </span>
+      </div>
+      <div className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
+        ~{estimatedLabel} remaining
       </div>
     </div>
   );

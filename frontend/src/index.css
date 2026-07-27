@@ -1,53 +1,72 @@
+/* =============================================================
+   FreikerDial design tokens -- retro sci-fi arcade / CRM terminal
+   =============================================================
+   Every color, radius, and font used across the app is a CSS
+   custom property here. This is what "modular / easy to retune
+   later" means concretely: change a value in this one file and
+   the whole app follows, without hunting through components.
+   See PROJECT_STATUS.md / this file's own comments for the
+   named palette below.
+*/
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* --- Palette --------------------------------------------- */
+  /* Backgrounds: near-black with a faint green undertone, like a
+     dim cockpit display rather than pure #000. */
+  --bg-void: #090c0a;
+  --bg-panel: #10161388;
+  --bg-panel-solid: #131a17;
+  --bg-panel-raised: #182019;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* Frame / border: muted green-gray. Panels get this at rest,
+     a brighter tint on focus/active states. */
+  --border-frame: #2d3a34;
+  --border-frame-bright: #4a6156;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
+  /* Primary action: softened neon green, not pure #00ff00 --
+     the brief calls for green that "doesn't need to be extremely
+     bright... can be softened for readability." */
+  --accent-green: #6fe08a;
+  --accent-green-strong: #3ddc6f;
+  --accent-green-text: #0a1f10;
+
+  /* Secondary action states */
+  --accent-blue: #4f9dff;
+  --accent-blue-text: #06172e;
+  --accent-red: #e0555a;
+  --accent-red-text: #2a0607;
+
+  /* Text */
+  --text-primary: #eef4f0;
+  --text-muted: #7c8f86;
+  --text-dim: #4d5c55;
+
+  /* Shape */
+  --radius-panel: 14px;
+  --radius-button: 10px;
+  --notch: 12px; /* corner-clip size for the ID-card / terminal look */
+
+  /* Fonts -- see index.html for the actual font loading.
+     Display: short strings only (logo, screen titles, button
+     labels, nav labels) -- Press Start 2P is a true 8-bit pixel
+     font and becomes illegible past ~20 characters.
+     Data: everything backend-driven (names, phone numbers,
+     amounts, notes, history) -- VT323 is a retro terminal
+     monospace that stays readable at small sizes with variable-
+     length real content. Never render real customer data in the
+     display font. */
+  --font-display: 'Press Start 2P', monospace;
+  --font-data: 'VT323', ui-monospace, monospace;
+
+  color-scheme: dark;
+  font-family: var(--font-data);
+  font-size: 18px;
+  color: var(--text-primary);
+  background: var(--bg-void);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
 }
 
 #root {
@@ -56,6 +75,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  background: var(--bg-void);
 }
 
 html,
@@ -64,6 +84,7 @@ body {
   width: 100%;
   min-height: 100dvh;
   overscroll-behavior-y: none;
+  background: var(--bg-void);
 }
 
 *,
@@ -76,4 +97,174 @@ h1,
 h2,
 p {
   margin: 0;
+}
+
+/* --- Shared retro utilities ---------------------------------
+   Reusable classes rather than one giant styled component --
+   any screen can opt into the "framed panel" or "notched card"
+   look without duplicating the clip-path/border rules. */
+
+.retro-panel {
+  background: var(--bg-panel-solid);
+  border: 2px solid var(--border-frame);
+  border-radius: var(--radius-panel);
+}
+
+/* The ID-card / terminal look: corners clipped at an angle,
+   evoking a sci-fi access card rather than a rounded web card.
+   This is the signature shape referenced across images 3, 5, 6. */
+.retro-card {
+  background: var(--bg-panel-raised);
+  border: 2px solid var(--border-frame-bright);
+  clip-path: polygon(
+    var(--notch) 0%,
+    100% 0%,
+    100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%,
+    0% 100%,
+    0% var(--notch)
+  );
+}
+
+.retro-button {
+  font-family: var(--font-display);
+  border-radius: var(--radius-button);
+  transition:
+    transform 0.08s ease-out,
+    filter 0.08s ease-out,
+    box-shadow 0.08s ease-out;
+}
+
+.retro-button:active:not(:disabled) {
+  transform: scale(0.96) translateY(1px);
+  filter: brightness(0.85);
+}
+
+/* Segmented progress bar recharge glow -- fires via the
+   .is-charging class, toggled briefly whenever progress advances. */
+@keyframes progress-recharge-glow {
+  0% {
+    box-shadow: 0 0 0px var(--accent-green-strong);
+  }
+  40% {
+    box-shadow: 0 0 14px 2px var(--accent-green-strong);
+  }
+  100% {
+    box-shadow: 0 0 0px var(--accent-green-strong);
+  }
+}
+
+.progress-cell.is-charging {
+  animation: progress-recharge-glow 0.6s ease-out;
+}
+
+@keyframes progress-count-pulse {
+  0% {
+    transform: scale(1);
+    text-shadow: none;
+  }
+  40% {
+    transform: scale(1.18);
+    text-shadow: 0 0 10px var(--accent-green-strong);
+  }
+  100% {
+    transform: scale(1);
+    text-shadow: none;
+  }
+}
+
+.progress-count.is-pulsing {
+  animation: progress-count-pulse 0.5s ease-out;
+  display: inline-block;
+}
+
+/* Customer card hyperspace transition -- current card flies off
+   right, next card enters from the left. Two directions, applied
+   via className toggling in CustomerCard's wrapper. */
+@keyframes card-jump-out {
+  0% {
+    transform: translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(140%) rotate(8deg);
+    opacity: 0;
+  }
+}
+
+@keyframes card-jump-in {
+  0% {
+    transform: translateX(-140%) rotate(-8deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.card-jump-out {
+  animation: card-jump-out 0.4s cubic-bezier(0.3, 0, 0.7, 1) forwards;
+}
+
+.card-jump-in {
+  animation: card-jump-in 0.4s cubic-bezier(0.2, 0, 0.4, 1) forwards;
+}
+
+/* Settings drawer slide */
+@keyframes drawer-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes drawer-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.drawer-panel {
+  animation: drawer-slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-backdrop {
+  animation: drawer-backdrop-in 0.15s ease-out;
+}
+
+/* Bottom nav tab-switch feedback */
+@keyframes nav-tab-pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.nav-tab.is-active .nav-tab-icon {
+  animation: nav-tab-pop 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-cell.is-charging,
+  .progress-count.is-pulsing,
+  .card-jump-out,
+  .card-jump-in,
+  .drawer-panel,
+  .drawer-backdrop,
+  .nav-tab.is-active .nav-tab-icon,
+  .retro-button {
+    animation: none !important;
+    transition: none !important;
+  }
 }

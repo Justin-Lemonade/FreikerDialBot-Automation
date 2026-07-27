@@ -167,9 +167,26 @@ async def test_customer_record_shows_notes_and_history(database, queue_engine):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_edit_command_without_enough_args_shows_usage(database, queue_engine):
+async def test_edit_command_with_identifier_only_shows_editable_block(database, queue_engine):
+    """/edit <identifier> alone (no field/value) now shows the
+    copy-paste-editable block (Option A) instead of a generic usage
+    message -- this is what makes "copy, change one thing, paste back"
+    possible without the operator needing to know field names upfront."""
     update = _fake_update(["C-1"])
     context = _fake_context(database, queue_engine, args=["C-1"])
+
+    await customer_ui.edit_command(update, context)
+
+    text = update.effective_message.reply_text.await_args.args[0]
+    assert "EDIT CUSTOMER" in text
+    assert "Loan #C-1" in text
+    assert "Balance: 100" in text
+
+
+@pytest.mark.asyncio
+async def test_edit_command_with_zero_args_shows_usage(database, queue_engine):
+    update = _fake_update([])
+    context = _fake_context(database, queue_engine, args=[])
 
     await customer_ui.edit_command(update, context)
 
@@ -199,6 +216,81 @@ async def test_edit_command_updates_field(database, queue_engine):
     assert database.get_customer(1)["balance"] == "999"
     text = update.effective_message.reply_text.await_args.args[0]
     assert "Updated" in text
+
+
+@pytest.mark.asyncio
+async def test_edit_command_accepts_field_value_shorthand(database, queue_engine):
+    """`/edit C-1 balance 999` (space-separated, no '=') must work
+    exactly like `/edit C-1 balance=999` -- most single-field edits are
+    this shape, and requiring a literal '=' is friction for no benefit
+    when there's only one field being changed."""
+    args = ["C-1", "balance", "999"]
+    update = _fake_update(args)
+    context = _fake_context(database, queue_engine, args=args)
+
+    await customer_ui.edit_command(update, context)
+
+    assert database.get_customer(1)["balance"] == "999"
+    text = update.effective_message.reply_text.await_args.args[0]
+    assert "Updated" in text
+
+
+@pytest.mark.asyncio
+async def test_edit_block_round_trip_only_changes_the_edited_line(database, queue_engine):
+    """The core "copy, change one thing, paste back" workflow: render
+    the block, change exactly one line, paste it back, and confirm only
+    that one field actually changed -- everything else must be left
+    exactly as it was, not silently rewritten to whatever the round-trip
+    happened to produce."""
+    customer = database.get_customer(1)
+    block = customer_ui.render_editable_block(customer)
+    edited_block = block.replace("Balance: 100", "Balance: 250")
+
+    update = _fake_update([])
+    update.effective_message.text = edited_block
+    context = _fake_context(database, queue_engine, args=[])
+
+    handled = await customer_ui.handle_potential_edit_block(update, context)
+
+    assert handled is True
+    updated = database.get_customer(1)
+    assert updated["balance"] == "250"
+    assert updated["first_name"] == "Ada"  # unchanged field must survive untouched
+    assert updated["days_overdue"] == "3"  # unchanged field must survive untouched
+    text = update.effective_message.reply_text.await_args.args[0]
+    assert "Balance" in text
+    assert "First Name" not in text  # only the changed field should be reported
+
+
+@pytest.mark.asyncio
+async def test_edit_block_with_no_changes_reports_nothing_to_update(database, queue_engine):
+    customer = database.get_customer(1)
+    block = customer_ui.render_editable_block(customer)
+
+    update = _fake_update([])
+    update.effective_message.text = block  # pasted back verbatim, unedited
+    context = _fake_context(database, queue_engine, args=[])
+
+    handled = await customer_ui.handle_potential_edit_block(update, context)
+
+    assert handled is True
+    assert database.get_customer(1)["balance"] == "100"  # confirm nothing changed
+    text = update.effective_message.reply_text.await_args.args[0]
+    assert "No changes" in text
+
+
+@pytest.mark.asyncio
+async def test_unrelated_text_is_not_treated_as_an_edit_block(database, queue_engine):
+    """Plain messages (e.g. import pastes) must not be mistaken for an
+    edit block just because they happen to contain a colon somewhere."""
+    update = _fake_update([])
+    update.effective_message.text = "Just a normal message: nothing to see here"
+    context = _fake_context(database, queue_engine, args=[])
+
+    handled = await customer_ui.handle_potential_edit_block(update, context)
+
+    assert handled is False
+    update.effective_message.reply_text.assert_not_awaited()
 
 
 @pytest.mark.asyncio

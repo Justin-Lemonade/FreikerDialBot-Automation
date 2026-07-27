@@ -546,6 +546,12 @@ class Database:
         plain substring check against the raw JSON-encoded phone_numbers
         column, which works fine for digit/substring search without
         depending on SQLite's json1 extension being compiled in.
+
+        Also matches the COMBINED "first last" name -- confirmed by
+        direct testing that searching "John Smith" previously returned
+        zero results even with a customer named exactly John Smith on
+        file, since first_name/last_name are separate columns and
+        neither alone contains the full typed string.
         """
         stripped = query.strip()
         if not stripped:
@@ -559,10 +565,11 @@ class Database:
                    OR first_name LIKE ?
                    OR last_name LIKE ?
                    OR phone_numbers LIKE ?
+                   OR (first_name || ' ' || last_name) LIKE ?
                 ORDER BY id DESC
                 LIMIT ?
                 """,
-                (pattern, pattern, pattern, pattern, limit),
+                (pattern, pattern, pattern, pattern, pattern, limit),
             ).fetchall()
             return [self._customer_from_row(row) for row in rows]
 
