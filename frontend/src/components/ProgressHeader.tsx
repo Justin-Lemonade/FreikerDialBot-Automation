@@ -21,7 +21,7 @@ const parseAverageTimeToSeconds = (averageTime: string): number => {
 
 const formatEstimatedRemaining = (remaining: number, averageTime: string): string => {
   const perCustomerSeconds = parseAverageTimeToSeconds(averageTime);
-  if (!perCustomerSeconds || !remaining) return '—';
+  if (!perCustomerSeconds || !remaining) return '-';
   const totalMinutes = Math.round((remaining * perCustomerSeconds) / 60);
   if (totalMinutes < 1) return '<1 min';
   if (totalMinutes === 1) return '1 min';
@@ -85,12 +85,12 @@ export const ProgressHeader = ({ currentIndex, totalCount, progressPercent, rema
       aria-live="polite"
       aria-label={`${currentIndex} of ${totalCount} customers, ${progressPercent}% complete`}
     >
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="font-display text-[10px]" style={{ color: 'var(--text-muted)' }}>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <span className="font-display text-[10px] whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
           CUSTOMER PROGRESS
         </span>
         <span
-          className={`font-display text-xs ${justIncremented ? 'progress-count is-pulsing' : 'progress-count'}`}
+          className={`font-display text-xs whitespace-nowrap ${justIncremented ? 'progress-count is-pulsing' : 'progress-count'}`}
           style={{ color: 'var(--accent-green)' }}
         >
           {progressPercent}%

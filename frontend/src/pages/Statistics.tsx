@@ -79,7 +79,7 @@ export const Statistics = () => {
           <StatisticsCard title="CONTACTED" value={`${stats.customersContacted}`} helper="Successful outcomes" />
           <StatisticsCard
             title="BEST DAY"
-            value={stats.bestDay === 'N/A' ? '—' : stats.bestDay}
+            value={stats.bestDay === 'N/A' ? '-' : stats.bestDay}
             helper={stats.bestDay === 'N/A' ? 'Not tracked yet' : 'Highest volume'}
           />
         </div>

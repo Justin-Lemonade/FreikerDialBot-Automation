@@ -58,19 +58,19 @@ export const Settings = () => {
       </Section>
 
       <Section title="CALLING BEHAVIOR">
-        <SettingRow label="Recall Attempts" description="Retries before skipping" value="—" disabled />
-        <SettingRow label="Call Delay" description="Pause between calls" value="—" disabled />
+        <SettingRow label="Recall Attempts" description="Retries before skipping" value="-" disabled />
+        <SettingRow label="Call Delay" description="Pause between calls" value="-" disabled />
       </Section>
 
       <Section title="DISPLAY">
-        <SettingRow label="Density" description="Compact vs. detailed cards" value="—" disabled />
-        <SettingRow label="Visible Fields" description="Which data shows by default" value="—" disabled />
-        <SettingRow label="Animation Intensity" description="Motion for transitions/glow" value="—" disabled />
+        <SettingRow label="Density" description="Compact vs. detailed cards" value="-" disabled />
+        <SettingRow label="Visible Fields" description="Which data shows by default" value="-" disabled />
+        <SettingRow label="Animation Intensity" description="Motion for transitions/glow" value="-" disabled />
       </Section>
 
       <Section title="SEARCH & QUEUE">
-        <SettingRow label="Search Defaults" description="Default match fields" value="—" disabled />
-        <SettingRow label="Queue Behavior" description="Ordering and skip rules" value="—" disabled />
+        <SettingRow label="Search Defaults" description="Default match fields" value="-" disabled />
+        <SettingRow label="Queue Behavior" description="Ordering and skip rules" value="-" disabled />
       </Section>
 
       <p className="text-center font-data text-sm" style={{ color: 'var(--text-dim)' }}>

@@ -37,6 +37,11 @@ frontend/node_modules/
 frontend/dist/
 frontend/build/
 
+# Local run/debug logs from start_mini_app.py -- these are Windows-path
+# testing artifacts (startup*.log), not source, and were previously
+# committed by accident since /bot.log* only matches that exact name.
+/startup*.log
+
 # OS-specific files
 .DS_Store
 Thumbs.db

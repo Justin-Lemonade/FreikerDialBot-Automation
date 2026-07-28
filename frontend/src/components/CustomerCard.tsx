@@ -73,19 +73,19 @@ export const CustomerCard = ({ customer, indexLabel, isLeaving }: Props) => {
       <div className="space-y-1.5 font-data text-lg">
         <div className="flex items-center justify-between">
           <span style={{ color: 'var(--text-muted)' }}>📞 Phone</span>
-          <span style={{ color: 'var(--text-primary)' }}>{customer.phone || '—'}</span>
+          <span style={{ color: 'var(--text-primary)' }}>{customer.phone || '-'}</span>
         </div>
         <div className="flex items-center justify-between">
           <span style={{ color: 'var(--text-muted)' }}>💰 Monthly</span>
-          <span style={{ color: 'var(--text-primary)' }}>{customer.monthlyPayment || '—'}</span>
+          <span style={{ color: 'var(--text-primary)' }}>{customer.monthlyPayment || '-'}</span>
         </div>
         <div className="flex items-center justify-between">
           <span style={{ color: 'var(--accent-red)' }}>⏰ Days Overdue</span>
-          <span style={{ color: 'var(--accent-red)' }}>{customer.daysLate || '—'}</span>
+          <span style={{ color: 'var(--accent-red)' }}>{customer.daysLate || '-'}</span>
         </div>
         <div className="flex items-center justify-between">
           <span style={{ color: 'var(--text-muted)' }}>💵 Balance</span>
-          <span style={{ color: 'var(--text-primary)' }}>{customer.balance || '—'}</span>
+          <span style={{ color: 'var(--text-primary)' }}>{customer.balance || '-'}</span>
         </div>
       </div>
 

@@ -1,3 +1,17 @@
+/* Tailwind v3 requires these three directives to actually generate any
+   utility CSS (flex, gap-*, p-*, fixed/inset-*, text sizing, and the
+   custom font-display/font-data utilities from tailwind.config.js).
+   Their absence here was a real, confirmed bug: every Tailwind utility
+   class across the app was rendering as literally no CSS, while custom
+   classes below (.retro-card, .retro-panel, etc.) and inline
+   style={{...}} colors (via CSS variables) kept working since neither
+   depends on Tailwind's generation pipeline -- which is exactly why
+   colors/shapes looked right in testing but spacing, alignment, and
+   fixed-position overlays (like the settings drawer) did not. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* =============================================================
    FreikerDial design tokens -- retro sci-fi arcade / CRM terminal
    =============================================================

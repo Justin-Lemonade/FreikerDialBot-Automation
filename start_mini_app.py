@@ -143,8 +143,16 @@ def launch_mini_app_stack(
     # to open.
     dist_dir = frontend_dir / "dist"
     _log("frontend", "Building frontend (npm run build)...")
+    # Windows' npm ships as npm.cmd, not a bare "npm" that subprocess can
+    # exec directly without shell=True; every other OS uses plain "npm".
+    # Hardcoding npm.cmd here previously broke this launcher entirely on
+    # Mac/Linux (FileNotFoundError) -- confirmed by checking .github/
+    # workflows/ci.yml, which never calls this script and so never
+    # caught it; the breakage would only surface for a real Mac/Linux
+    # user or dev running python bot.py / start_mini_app.py locally.
+    npm_executable = "npm.cmd" if sys.platform == "win32" else "npm"
     build_result = subprocess.run(
-        ["npm.cmd", "run", "build"],
+        [npm_executable, "run", "build"],
         cwd=str(frontend_dir),
         capture_output=True,
         text=True,

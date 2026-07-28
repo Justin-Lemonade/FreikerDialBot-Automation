@@ -73,10 +73,10 @@ export const CustomerDetail = ({ customerId, onBack }: Props) => {
               {record.loanNumber}
             </p>
             <div className="mt-3 space-y-1 font-data text-lg" style={{ color: 'var(--text-primary)' }}>
-              <p>📞 {record.phone || '—'}</p>
-              <p>💰 Balance: {record.balance || '—'}</p>
-              <p style={{ color: 'var(--accent-red)' }}>📆 Days Overdue: {record.daysLate || '—'}</p>
-              <p>💵 Monthly Payment: {record.monthlyPayment || '—'}</p>
+              <p>📞 {record.phone || '-'}</p>
+              <p>💰 Balance: {record.balance || '-'}</p>
+              <p style={{ color: 'var(--accent-red)' }}>📆 Days Overdue: {record.daysLate || '-'}</p>
+              <p>💵 Monthly Payment: {record.monthlyPayment || '-'}</p>
             </div>
           </div>
 
