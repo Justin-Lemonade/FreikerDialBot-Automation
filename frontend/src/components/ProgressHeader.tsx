@@ -89,6 +89,29 @@ export const ProgressHeader = ({ currentIndex, totalCount, progressPercent, rema
         <span className="font-display text-[10px] whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
           CUSTOMER PROGRESS
         </span>
+      </div>
+
+      <div className="mb-2 font-data text-lg" style={{ color: 'var(--text-primary)' }}>
+        {currentIndex} / {totalCount} customers
+      </div>
+
+      <div className="mb-1.5 flex items-center gap-2">
+        <div className="flex flex-1 gap-[3px]" aria-hidden="true">
+          {Array.from({ length: SEGMENT_COUNT }, (_, index) => {
+            const isFilled = index < filledSegments;
+            const isNewest = isFilled && index === filledSegments - 1 && justCharged;
+            return (
+              <div
+                key={index}
+                className={`h-3 flex-1 rounded-[2px] ${isNewest ? 'progress-cell is-charging' : ''}`}
+                style={{
+                  background: isFilled ? 'var(--accent-green)' : 'var(--bg-panel-raised)',
+                  border: `1px solid ${isFilled ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
+                }}
+              />
+            );
+          })}
+        </div>
         <span
           className={`font-display text-xs whitespace-nowrap ${justIncremented ? 'progress-count is-pulsing' : 'progress-count'}`}
           style={{ color: 'var(--accent-green)' }}
@@ -97,30 +120,8 @@ export const ProgressHeader = ({ currentIndex, totalCount, progressPercent, rema
         </span>
       </div>
 
-      <div className="mb-2 flex gap-[3px]" aria-hidden="true">
-        {Array.from({ length: SEGMENT_COUNT }, (_, index) => {
-          const isFilled = index < filledSegments;
-          const isNewest = isFilled && index === filledSegments - 1 && justCharged;
-          return (
-            <div
-              key={index}
-              className={`h-3 flex-1 rounded-[2px] ${isNewest ? 'progress-cell is-charging' : ''}`}
-              style={{
-                background: isFilled ? 'var(--accent-green)' : 'var(--bg-panel-raised)',
-                border: `1px solid ${isFilled ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
-              }}
-            />
-          );
-        })}
-      </div>
-
-      <div className="flex items-baseline justify-between font-data text-lg">
-        <span style={{ color: 'var(--text-primary)' }}>
-          {currentIndex} / {totalCount} customers
-        </span>
-      </div>
-      <div className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
-        ~{estimatedLabel} remaining
+      <div className="font-display text-[9px]" style={{ color: 'var(--accent-amber)' }}>
+        ~{estimatedLabel} REMAINING
       </div>
     </div>
   );

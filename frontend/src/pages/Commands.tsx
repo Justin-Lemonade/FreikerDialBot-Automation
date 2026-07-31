@@ -38,10 +38,10 @@ export const Commands = ({ onOpenStatistics, onOpenNotes }: Props) => {
           SUGGESTED COMMANDS
         </p>
         <div className="space-y-2.5">
-          <CommandButton label="VIEW STATISTICS" onClick={onOpenStatistics} color="#5b6ecf" />
-          <CommandButton label="SESSION NOTES" onClick={onOpenNotes} color="#4f9dff" />
-          <CommandButton label="PAUSE QUEUE" color="#8a5cd6" disabled />
-          <CommandButton label="EXPORT DATA" color="#c95050" disabled />
+          <CommandButton label="VIEW STATISTICS" onClick={onOpenStatistics} color="var(--accent-indigo)" />
+          <CommandButton label="SESSION NOTES" onClick={onOpenNotes} color="var(--accent-blue)" />
+          <CommandButton label="PAUSE QUEUE" color="var(--accent-purple)" disabled />
+          <CommandButton label="EXPORT DATA" color="var(--accent-red)" disabled />
         </div>
       </div>
 

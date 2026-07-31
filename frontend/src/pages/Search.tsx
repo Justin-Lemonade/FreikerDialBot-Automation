@@ -79,18 +79,17 @@ export const Search = ({ onSelectCustomer }: Props) => {
       )}
 
       {results.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {results.map((customer) => (
             <button
               key={customer.id}
               onClick={() => onSelectCustomer(customer)}
-              className="retro-button w-full px-4 py-3 text-left"
-              style={{ background: 'var(--bg-panel-solid)', border: '1px solid var(--border-frame)' }}
+              className="retro-card retro-button w-full px-4 py-3 text-left"
             >
-              <p className="font-data text-xl" style={{ color: 'var(--text-primary)' }}>
+              <p className="break-words font-data text-xl" style={{ color: 'var(--text-primary)' }}>
                 {customer.name || '(name missing)'}
               </p>
-              <p className="font-data text-base" style={{ color: 'var(--text-muted)' }}>
+              <p className="break-words font-data text-base" style={{ color: 'var(--text-muted)' }}>
                 {customer.loanNumber} · {customer.phone || 'no phone on file'}
               </p>
               {customer.isBlacklisted && (

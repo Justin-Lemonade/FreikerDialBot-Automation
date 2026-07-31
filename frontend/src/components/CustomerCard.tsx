@@ -12,11 +12,39 @@ interface Props {
   isLeaving?: boolean;
 }
 
+interface InfoCellProps {
+  icon: string;
+  label: string;
+  value: string;
+  color: string;
+}
+
+/** One column of the 3-across info grid below the name (days overdue /
+ * monthly payment / phone) -- matches the inspiration images' compact
+ * calling-card layout exactly, rather than the previous vertical list.
+ * Values wrap instead of truncating: loan/phone/amount digits are the
+ * one thing on this screen an operator must never lose to an ellipsis. */
+const InfoCell = ({ icon, label, value, color }: InfoCellProps) => (
+  <div className="flex min-w-0 flex-col items-center gap-1 text-center">
+    <span className="text-lg leading-none">{icon}</span>
+    <span className="w-full break-words font-data text-base leading-tight" style={{ color }}>
+      {value || '-'}
+    </span>
+    <span className="font-display text-[7px] leading-tight" style={{ color: 'var(--text-muted)' }}>
+      {label}
+    </span>
+  </div>
+);
+
 /**
- * The ID-card / terminal-access-card signature element (images 3, 5,
- * 6). Corners are clipped via the shared .retro-card utility rather
- * than rounded, which is what gives it the sci-fi-card silhouette
- * instead of a generic rounded panel.
+ * The ID-card / terminal-access-card signature element -- matches the
+ * calling-screen inspiration images precisely: avatar + name/loan
+ * number header, then a 3-column icon grid (days overdue / monthly
+ * payment / phone), not a vertical list of every field. Balance and
+ * anything beyond these three lives in the More Info / CustomerDetail
+ * screen instead, per the brief's "don't overload the main calling
+ * interface" instruction -- this card is the quick-glance surface, not
+ * the exhaustive one.
  */
 export const CustomerCard = ({ customer, indexLabel, isLeaving }: Props) => {
   const [isEntering, setIsEntering] = useState(true);
@@ -53,40 +81,29 @@ export const CustomerCard = ({ customer, indexLabel, isLeaving }: Props) => {
         </div>
       </div>
 
-      <div className="mb-4 flex items-center gap-3 border-b pb-3" style={{ borderColor: 'var(--border-frame)' }}>
+      <div className="mb-4 flex items-start gap-3 border-b pb-3" style={{ borderColor: 'var(--border-frame)' }}>
         <div
           className="flex h-12 w-12 shrink-0 items-center justify-center text-2xl"
           style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-frame)' }}
         >
           🙂
         </div>
+        {/* Never truncated: long names wrap onto a second line instead
+            of being cut off, per the brief's explicit requirement. */}
         <div className="min-w-0">
-          <h2 className="truncate font-data text-2xl leading-tight" style={{ color: 'var(--text-primary)' }}>
+          <h2 className="break-words font-data text-2xl leading-tight" style={{ color: 'var(--text-primary)' }}>
             {customer.name || '(name missing)'}
           </h2>
-          <p className="truncate font-data text-base" style={{ color: 'var(--text-muted)' }}>
+          <p className="break-words font-data text-base" style={{ color: 'var(--text-muted)' }}>
             {customer.loanNumber}
           </p>
         </div>
       </div>
 
-      <div className="space-y-1.5 font-data text-lg">
-        <div className="flex items-center justify-between">
-          <span style={{ color: 'var(--text-muted)' }}>📞 Phone</span>
-          <span style={{ color: 'var(--text-primary)' }}>{customer.phone || '-'}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span style={{ color: 'var(--text-muted)' }}>💰 Monthly</span>
-          <span style={{ color: 'var(--text-primary)' }}>{customer.monthlyPayment || '-'}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span style={{ color: 'var(--accent-red)' }}>⏰ Days Overdue</span>
-          <span style={{ color: 'var(--accent-red)' }}>{customer.daysLate || '-'}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span style={{ color: 'var(--text-muted)' }}>💵 Balance</span>
-          <span style={{ color: 'var(--text-primary)' }}>{customer.balance || '-'}</span>
-        </div>
+      <div className="grid grid-cols-3 gap-2">
+        <InfoCell icon="📅" label="DAYS OVERDUE" value={customer.daysLate} color="var(--accent-red)" />
+        <InfoCell icon="🪙" label="MONTHLY" value={customer.monthlyPayment} color="var(--text-primary)" />
+        <InfoCell icon="📞" label="PHONE" value={customer.phone} color="var(--accent-green)" />
       </div>
 
       {customer.isBlacklisted && (

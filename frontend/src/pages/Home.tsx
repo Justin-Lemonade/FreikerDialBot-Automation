@@ -41,13 +41,16 @@ export const Home = ({ session, customer, outcome, isSubmitting, durationLabel, 
 
   if (!hasQueue) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center">
-        <h1 className="font-display text-2xl leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+      <div className="-mx-4 -mt-4 flex min-h-[70vh] flex-col items-center justify-center gap-6 p-6 text-center retro-starfield">
+        <h1
+          className="font-display text-2xl leading-relaxed"
+          style={{ color: 'var(--text-primary)', textShadow: '0 0 12px rgba(238, 244, 240, 0.6), 0 0 24px rgba(111, 224, 138, 0.3)' }}
+        >
           WELCOME
           <br />
           BACK
         </h1>
-        <div className="w-full space-y-3">
+        <div className="w-full max-w-xs space-y-3">
           <button
             onClick={onOpenUpload}
             disabled

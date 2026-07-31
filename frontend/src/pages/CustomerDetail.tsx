@@ -7,10 +7,43 @@ interface Props {
   onBack: () => void;
 }
 
+interface DetailRowProps {
+  icon: string;
+  label: string;
+  value: string;
+  color?: string;
+}
+
+/** One labeled row of the detail card -- icon + label left, value
+ * right, dashed divider below. Matches the "detailed" inspiration
+ * image's More Info layout. Values wrap rather than truncate; this
+ * screen exists specifically so nothing is ever cut off. */
+const DetailRow = ({ icon, label, value, color }: DetailRowProps) => (
+  <div
+    className="flex items-start justify-between gap-3 border-b border-dashed py-2.5 last:border-b-0"
+    style={{ borderColor: 'var(--border-frame)' }}
+  >
+    <span className="shrink-0 font-data text-lg" style={{ color: color ?? 'var(--text-muted)' }}>
+      {icon} {label}
+    </span>
+    <span className="break-words text-right font-data text-lg" style={{ color: color ?? 'var(--text-primary)' }}>
+      {value || '-'}
+    </span>
+  </div>
+);
+
 /**
  * Reuses the existing, tested GET /customer/record endpoint -- same
  * data Telegram's /customer command and "More Info" button already
  * show, just as a Mini App page instead of a chat message.
+ *
+ * Field list is deliberately limited to what the backend actually
+ * tracks (phone, balance, days overdue, monthly payment, current
+ * overdue amount, original loan amount). The "detailed" inspiration
+ * image also shows interest rate, payment count, a mailing address,
+ * and an email -- none of which exist in this schema, so they are not
+ * invented here; only real fields are shown, per the brief's own
+ * instruction not to copy unsupported fields from the reference images.
  */
 export const CustomerDetail = ({ customerId, onBack }: Props) => {
   const [record, setRecord] = useState<CustomerRecord | null>(null);
@@ -56,27 +89,30 @@ export const CustomerDetail = ({ customerId, onBack }: Props) => {
       {record && (
         <>
           <div className="retro-card p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="font-data text-xl" style={{ color: 'var(--text-primary)' }}>
+            <div className="mb-1 flex items-start justify-between gap-2">
+              <p className="break-words font-data text-xl" style={{ color: 'var(--text-primary)' }}>
                 {record.name || '(name missing)'}
               </p>
               {record.isBlacklisted && (
                 <span
-                  className="px-2 py-1 font-display text-[8px]"
+                  className="shrink-0 px-2 py-1 font-display text-[8px]"
                   style={{ background: 'var(--accent-red-text)', color: 'var(--accent-red)' }}
                 >
                   🚫 BLACKLISTED
                 </span>
               )}
             </div>
-            <p className="font-data text-base" style={{ color: 'var(--text-muted)' }}>
+            <p className="mb-3 break-words font-data text-base" style={{ color: 'var(--text-muted)' }}>
               {record.loanNumber}
             </p>
-            <div className="mt-3 space-y-1 font-data text-lg" style={{ color: 'var(--text-primary)' }}>
-              <p>📞 {record.phone || '-'}</p>
-              <p>💰 Balance: {record.balance || '-'}</p>
-              <p style={{ color: 'var(--accent-red)' }}>📆 Days Overdue: {record.daysLate || '-'}</p>
-              <p>💵 Monthly Payment: {record.monthlyPayment || '-'}</p>
+
+            <div>
+              <DetailRow icon="📞" label="Phone" value={record.phone} color="var(--accent-green)" />
+              <DetailRow icon="🪙" label="Monthly Payment" value={record.monthlyPayment} />
+              <DetailRow icon="📅" label="Days Overdue" value={record.daysLate} color="var(--accent-red)" />
+              <DetailRow icon="💵" label="Current Balance" value={record.balance} />
+              <DetailRow icon="🪙" label="Amount Overdue" value={record.currentOverdueAmount} />
+              <DetailRow icon="🪙" label="Original Loan Amount" value={record.originalLoanAmount} />
             </div>
           </div>
 
@@ -86,7 +122,7 @@ export const CustomerDetail = ({ customerId, onBack }: Props) => {
                 NOTES
               </p>
               {record.notes.map((note, index) => (
-                <p key={`${index}-${note.slice(0, 20)}`} className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
+                <p key={`${index}-${note.slice(0, 20)}`} className="break-words font-data text-lg" style={{ color: 'var(--text-primary)' }}>
                   • {note}
                 </p>
               ))}
@@ -99,7 +135,7 @@ export const CustomerDetail = ({ customerId, onBack }: Props) => {
                 HISTORY
               </p>
               {record.history.slice(0, 10).map((event, index) => (
-                <p key={`${event.id ?? index}`} className="font-data text-base" style={{ color: 'var(--text-muted)' }}>
+                <p key={`${event.id ?? index}`} className="break-words font-data text-base" style={{ color: 'var(--text-muted)' }}>
                   {event.event_timestamp} — {event.event_type}
                 </p>
               ))}
