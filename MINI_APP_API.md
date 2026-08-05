@@ -55,20 +55,31 @@ is no `X-Telegram-Init-Data` fallback despite a previous version of this
 doc claiming one existed. `initData` is the raw string Telegram's WebApp
 JS SDK exposes as `window.Telegram.WebApp.initData`.
 
-**Current enforcement (intentional, temporary):**
-- No `Authorization` header at all → request is allowed through as
-  **anonymous** (`telegram_user_id=None` in all recorded events).
+**Current enforcement (fixed as of the 2026-07-29 security remediation pass):**
+- No `Authorization` header at all → **401** on every endpoint in
+  `_API_PATHS` (everything except `/` and static assets, which must stay
+  reachable without credentials -- that's how the frontend's own JS gets
+  loaded before it has anything to authenticate with).
 - An `Authorization` header **is** present but fails validation (bad
-  signature, expired `auth_date`, malformed) → **401**, always rejected,
-  never silently downgraded to anonymous.
+  signature, expired `auth_date`, malformed) → **401**, as before.
+- A **validated, signature-checked** initData payload with no `user`
+  field (a legitimate startup-context init, see `extract_user_id`) is
+  still let through -- it proved Telegram origin, it just isn't
+  attributable to a specific user. This is a distinct case from "no
+  header at all" and is tracked separately (`self._auth_verified` in
+  `mini_app_api.py`), not conflated with it.
+- `MINI_APP_ALLOW_ANONYMOUS=1` (env var, `Settings.mini_app_allow_anonymous`,
+  **off by default**) is an explicit opt-in escape hatch for local
+  browser testing outside a real Telegram client, where no `initData`
+  exists at all. Do not set this outside local dev.
 
-This is deliberately permissive on the "no header" case because the
-frontend doesn't send `initData` on every request yet. **Once the real
-Mini App frontend is finished and always sends it, flip enforcement to
-reject missing credentials too** — that's a one-line change in
-`MiniAppRequestHandler._dispatch` (treat `telegram_user_id is None` as
-401 for mutating routes), deliberately not done yet so this backend work
-doesn't block on frontend completion.
+This was previously deferred pending two things, both since confirmed:
+the frontend now sends the header on every request unconditionally when
+available (`frontend/src/api/client.ts`), and the "might fire before
+Telegram's WebApp script finishes initializing" race turned out not to
+apply given `frontend/index.html`'s script ordering (`telegram-web-app.js`
+loads synchronously in `<head>`, before the app's own module script) --
+by the time any app code runs, `initData` is already populated.
 
 `auth_date` freshness window: `MINI_APP_AUTH_MAX_AGE_SECONDS` env var
 (default 86400 = 24h).
@@ -235,10 +246,6 @@ Marked here, left fully functional in Telegram for now — nothing removed:
 
 ## Known gaps / not done in this pass
 
-- **No enforcement of auth on missing credentials for most endpoints**
-  (see Authentication above) — anonymous requests are still allowed
-  through everywhere except `/export`, which now requires admin
-  authorization (fixed in the architecture consolidation pass).
 - **CORS is wide open** (`Access-Control-Allow-Origin: *`) on every
   response. Fine for local development, should be restricted to the
   real Mini App origin once one exists.

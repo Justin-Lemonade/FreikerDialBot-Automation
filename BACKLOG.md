@@ -28,6 +28,17 @@ reasoning.
   spawns a new session" failure mode that fix could have introduced.
 - ~~No Telegram-side Mini App launch mechanism~~ — fixed. Menu button +
   `/app` command.
+- ~~Auth enforcement was opt-in for most endpoints, not mandatory~~ —
+  fixed (2026-07-29 security remediation pass). Missing/malformed
+  credentials now get a hard 401 on every endpoint in `_API_PATHS`;
+  `/` and static assets stay reachable without auth (they have to be —
+  that's how the frontend's own JS loads before it has anything to
+  authenticate with). The "might fire before Telegram's WebApp script
+  finishes initializing" concern from item 18 below turned out not to
+  apply given `frontend/index.html`'s script ordering — confirmed by
+  direct inspection, not assumed. `MINI_APP_ALLOW_ANONYMOUS=1` is a new,
+  explicit, off-by-default opt-in for local browser testing outside a
+  real Telegram client. See `MINI_APP_API.md`.
 - ~~**`GET /export` has no authorization gate**~~ — **fixed this pass.**
   Now requires `security.is_admin`, matching Telegram's `/export`
   exactly, via the new shared `security.py`. Tested (anonymous → 403,
@@ -107,10 +118,6 @@ reasoning.
 
 ### Security
 
-1. **Auth enforcement is opt-in for most endpoints, not mandatory.**
-   Requests with no `Authorization` header are still let through
-   anonymously everywhere except `/export`. Intentional until the real
-   frontend always sends `initData` — see `MINI_APP_API.md`.
 2. **CORS is wide open** (`Access-Control-Allow-Origin: *`). Restrict to
    the real Mini App origin once one exists.
 3. **Denied admin attempts aren't audit-logged, only successes.** Worth
@@ -163,18 +170,6 @@ reasoning.
     behaves, but worth a decision for manual edits specifically.
 15. Search has a flat result cap (20 Mini App / 10 Telegram), no
     pagination — fine at current data volumes.
-18. **Security decision, not silently made:** anonymous (no
-    `Authorization` header) Mini App API access is still allowed on
-    every endpoint except `/export`. Confirmed this pass that the real
-    frontend's `getInitData()` only attaches the header when
-    `window.Telegram.WebApp.initData` is non-empty at request time —
-    it does NOT always send credentials (e.g. if the app is opened
-    outside Telegram, or hit before Telegram's WebApp script finishes
-    initializing). Removing anonymous access now would risk legitimate
-    requests failing on a timing edge case, not just blocking bad
-    actors. Recommend: confirm `initData` is reliably populated before
-    the first API call fires (e.g. gate the initial fetch on
-    `telegram.isReady`) before making auth mandatory.
 19. **Real gap, not implemented:** a customer whose every phone number
     is blacklisted is still selectable as current/next — queue
     eligibility only checks the customer-level `is_blacklisted` flag,

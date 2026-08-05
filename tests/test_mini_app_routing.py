@@ -15,11 +15,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -58,13 +62,35 @@ def api_server(tmp_path: Path):
         thread.join(timeout=2)
 
 
-def _request(server, path: str, method: str = "GET", payload: dict | None = None):
+def _sign_init_data(bot_token: str, fields: dict[str, str]) -> str:
+    """Same algorithm as telegram_auth.py / test_mini_app_api.py's
+    helper of the same name -- kept local to this file rather than
+    imported to avoid a test-to-test import dependency."""
+    data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    all_fields = {**fields, "hash": computed_hash}
+    return "&".join(f"{key}={quote(str(value), safe='')}" for key, value in all_fields.items())
+
+
+def _request(server, path: str, method: str = "GET", payload: dict | None = None, service=None):
+    """service defaults to None for the static-file tests in this file
+    (which must work without any auth at all); the API-routing tests
+    below pass service=service explicitly since every /api endpoint now
+    requires a valid Authorization header."""
     port = server.server_address[1]
     url = f"http://127.0.0.1:{port}{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
         req.add_header("Content-Type", "application/json")
+    if service is not None:
+        fields = {
+            "query_id": "test-query",
+            "user": json.dumps({"id": 900000003, "first_name": "Route"}, separators=(",", ":")),
+            "auth_date": str(int(time.time())),
+        }
+        req.add_header("Authorization", f"tma {_sign_init_data(service.bot_token, fields)}")
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             body = resp.read()
@@ -83,15 +109,15 @@ class TestApiPrefixRouting:
     original bare-path-only routing table never matched."""
 
     def test_prefixed_get_endpoint_matches(self, api_server):
-        server, _service = api_server
-        status, body, _ = _request(server, "/api/session/current")
+        server, service = api_server
+        status, body, _ = _request(server, "/api/session/current", service=service)
         assert status == 200
         assert "sessionId" in body
 
     def test_bare_get_endpoint_still_matches(self, api_server):
         """Existing callers/tests using the bare path must keep working."""
-        server, _service = api_server
-        status, body, _ = _request(server, "/session/current")
+        server, service = api_server
+        status, body, _ = _request(server, "/session/current", service=service)
         assert status == 200
         assert "sessionId" in body
 
@@ -101,7 +127,7 @@ class TestApiPrefixRouting:
             [{"loan_number": "R1", "first_name": "Route", "last_name": "Test",
               "phone_numbers": ["+15550001111"], "balance": "10", "days_overdue": "1"}]
         )
-        status, body, _ = _request(server, "/api/session/next", method="POST")
+        status, body, _ = _request(server, "/api/session/next", method="POST", service=service)
         assert status == 200
         assert body["customer"]["loanNumber"] == "R1"
 

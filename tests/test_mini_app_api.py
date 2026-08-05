@@ -66,13 +66,32 @@ def api_server(tmp_path: Path):
         thread.join(timeout=2)
 
 
-def _request_json(server, path: str, method: str = "GET", payload: dict | None = None):
+def _request_json(
+    server,
+    path: str,
+    method: str = "GET",
+    payload: dict | None = None,
+    service=None,
+    authenticated: bool = True,
+):
+    """authenticated=True (the default) signs a valid initData header
+    using service.bot_token, since every endpoint now requires one --
+    see the security remediation pass in MINI_APP_API.md. Pass
+    service=None (or authenticated=False) for the handful of tests that
+    specifically exercise unauthenticated/anonymous behavior."""
     host, port = server.server_address
     data = None
     headers = {}
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
+    if authenticated and service is not None:
+        fields = {
+            "query_id": "test-query",
+            "user": json.dumps({"id": 900000001, "first_name": "Test"}, separators=(",", ":")),
+            "auth_date": str(int(time.time())),
+        }
+        headers["Authorization"] = f"tma {_sign_init_data(service.bot_token, fields)}"
     req = urllib.request.Request(
         f"http://{host}:{port}{path}",
         method=method,
@@ -99,15 +118,15 @@ def test_minimal_mini_app_flow(api_server):
         ]
     )
 
-    status, current_session = _request_json(server, "/session/current")
+    status, current_session = _request_json(server, "/session/current", service=service)
     assert status == 200
     assert current_session["customerCount"] >= 1
 
-    status, current_customer = _request_json(server, "/customer/current")
+    status, current_customer = _request_json(server, "/customer/current", service=service)
     assert status == 200
     assert current_customer["loan_number"] == "loan-001"
 
-    status, started = _request_json(server, "/call/start", method="POST", payload={"customerId": current_customer["id"]})
+    status, started = _request_json(server, "/call/start", method="POST", payload={"customerId": current_customer["id"]}, service=service)
     assert status == 200
     assert started["ok"] is True
 
@@ -116,11 +135,12 @@ def test_minimal_mini_app_flow(api_server):
         "/call/result",
         method="POST",
         payload={"customerId": current_customer["id"], "outcome": "answered"},
+    service=service,
     )
     assert status == 200
     assert result["outcome"] == "answered"
 
-    status, stats = _request_json(server, "/statistics")
+    status, stats = _request_json(server, "/statistics", service=service)
     assert status == 200
     assert stats["today"]["customers_contacted"] >= 1
 
@@ -141,7 +161,7 @@ def test_get_endpoints_do_not_mutate_queue_state(api_server):
     )
 
     for _ in range(3):
-        status, customer = _request_json(server, "/customer/current")
+        status, customer = _request_json(server, "/customer/current", service=service)
         assert status == 200
         assert customer["loan_number"] == "peek-1"
 
@@ -163,7 +183,7 @@ def test_call_result_advances_queue_exactly_once_and_persists_duration(api_serve
         ]
     )
 
-    _, current = _request_json(server, "/customer/current")
+    _, current = _request_json(server, "/customer/current", service=service)
     assert current["loan_number"] == "dur-1"
 
     status, result = _request_json(
@@ -171,6 +191,7 @@ def test_call_result_advances_queue_exactly_once_and_persists_duration(api_serve
         "/call/result",
         method="POST",
         payload={"customerId": current["id"], "outcome": "answered", "duration": 42},
+    service=service,
     )
     assert status == 200
     assert result["nextCustomer"]["loan_number"] == "dur-2"
@@ -188,24 +209,28 @@ def test_call_back_requeues_did_not_answer_customers(api_server):
         [{"loan_number": "cb-1", "first_name": "Cal", "last_name": "Back",
           "phone_numbers": ["+15550000005"], "balance": "10", "days_overdue": "1"}]
     )
-    _, current = _request_json(server, "/customer/current")
+    _, current = _request_json(server, "/customer/current", service=service)
     _request_json(
         server, "/call/result", method="POST",
         payload={"customerId": current["id"], "outcome": "did_not_answer"},
+    service=service,
     )
     assert service.database.status_counts()["call_later"] == 1
 
-    status, _result = _request_json(server, "/queue/call-back", method="POST")
+    status, _result = _request_json(server, "/queue/call-back", method="POST", service=service)
     assert status == 200
     assert service.database.status_counts()["call_later"] == 0
     assert service.database.status_counts()["waiting"] == 1
 
 
 def test_export_requires_admin_authorization(authenticated_api_server):
-    """SECURITY regression test: anonymous requests, and requests from a
-    validated-but-non-admin Telegram user, must both be rejected. This
-    endpoint hands out every customer's PII -- it needs the same gate
-    Telegram's /export command has always had. See BACKLOG.md."""
+    """SECURITY regression test: anonymous requests (401, no credentials
+    at all -- caught by the general auth gate before /export's own admin
+    check even runs) and requests from a validated-but-non-admin
+    Telegram user (403, real credentials but the wrong role) must both
+    be rejected. This endpoint hands out every customer's PII -- it
+    needs the same gate Telegram's /export command has always had.
+    See BACKLOG.md."""
     server, service = authenticated_api_server
     service.database.insert_customers(
         [{"loan_number": "exp-1", "first_name": "Ex", "last_name": "Port",
@@ -215,7 +240,7 @@ def test_export_requires_admin_authorization(authenticated_api_server):
 
     with pytest.raises(urllib.error.HTTPError) as exc_info:
         urllib.request.urlopen(f"http://{host}:{port}/export?format=csv", timeout=5)
-    assert exc_info.value.code == 403
+    assert exc_info.value.code == 401
 
     fields = {
         "query_id": "q",
@@ -269,7 +294,7 @@ def test_pause_endpoint_pauses_the_queue(api_server):
         [{"loan_number": "pause-1", "first_name": "Pau", "last_name": "Se",
           "phone_numbers": ["+15550000007"], "balance": "10", "days_overdue": "1"}]
     )
-    status, result = _request_json(server, "/queue/pause", method="POST")
+    status, result = _request_json(server, "/queue/pause", method="POST", service=service)
     assert status == 200
     assert result["paused"] is True
     assert service.database.get_queue_session()["is_paused"] == 1
@@ -291,11 +316,11 @@ def test_mini_app_never_surfaces_a_blacklisted_customer(api_server):
     blocked_id = service.database.get_customer(1)["id"]
     service.database.set_customer_blacklisted(blocked_id, True)
 
-    status, customer = _request_json(server, "/customer/current")
+    status, customer = _request_json(server, "/customer/current", service=service)
     assert status == 200
     assert customer["loanNumber"] == "bl-b"
 
-    status, session = _request_json(server, "/session/current")
+    status, session = _request_json(server, "/session/current", service=service)
     assert session["currentCustomer"]["loanNumber"] == "bl-b"
 
 
@@ -307,7 +332,7 @@ def test_mini_app_phone_blacklist_falls_back_like_telegram_does(api_server):
     )
     service.database.blacklist_phone("111")
 
-    status, customer = _request_json(server, "/customer/current")
+    status, customer = _request_json(server, "/customer/current", service=service)
     assert status == 200
     assert customer["phone"] == "222"
 
@@ -322,10 +347,10 @@ def test_queue_upcoming_endpoint_previews_next_customer(api_server):
              "phone_numbers": ["+15550000031"], "balance": "10", "days_overdue": "1"},
         ]
     )
-    _, current = _request_json(server, "/customer/current")
-    _request_json(server, "/call/start", method="POST", payload={"customerId": current["id"]})
+    _, current = _request_json(server, "/customer/current", service=service)
+    _request_json(server, "/call/start", method="POST", payload={"customerId": current["id"]}, service=service)
 
-    status, upcoming = _request_json(server, "/queue/upcoming")
+    status, upcoming = _request_json(server, "/queue/upcoming", service=service)
     assert status == 200
     assert upcoming["loanNumber"] == "up-2"
 
@@ -336,7 +361,7 @@ def test_customer_search_endpoint(api_server):
         [{"loan_number": "srch-1", "first_name": "Sasha", "last_name": "One",
           "phone_numbers": ["+15550000010"], "balance": "10", "days_overdue": "1"}]
     )
-    status, result = _request_json(server, "/customer/search?q=Sasha")
+    status, result = _request_json(server, "/customer/search?q=Sasha", service=service)
     assert status == 200
     assert [r["loan_number"] for r in result["results"]] == ["srch-1"]
 
@@ -349,7 +374,7 @@ def test_customer_record_endpoint(api_server):
     )
     customer_id = service.database.get_customer(1)["id"]
 
-    status, record = _request_json(server, f"/customer/record?id={customer_id}")
+    status, record = _request_json(server, f"/customer/record?id={customer_id}", service=service)
     assert status == 200
     assert record["loan_number"] == "rec-1"
     assert record["history"] == []
@@ -357,9 +382,15 @@ def test_customer_record_endpoint(api_server):
 
 
 def test_customer_record_endpoint_404_for_missing_customer(api_server):
-    server, _service = api_server
+    server, service = api_server
+    fields = {"query_id": "q", "auth_date": str(int(time.time())),
+              "user": json.dumps({"id": 900000002, "first_name": "T"}, separators=(",", ":"))}
+    init_data = _sign_init_data(service.bot_token, fields)
     host, port = server.server_address
-    req = urllib.request.Request(f"http://{host}:{port}/customer/record?id=9999")
+    req = urllib.request.Request(
+        f"http://{host}:{port}/customer/record?id=9999",
+        headers={"Authorization": f"tma {init_data}"},
+    )
     with pytest.raises(urllib.error.HTTPError) as exc_info:
         urllib.request.urlopen(req, timeout=5)
     assert exc_info.value.code == 404
@@ -376,6 +407,7 @@ def test_customer_edit_endpoint(api_server):
     status, result = _request_json(
         server, "/customer/edit", method="POST",
         payload={"customerId": customer_id, "fields": {"balance": "500"}},
+    service=service,
     )
     assert status == 200
     assert result["ok"] is True
@@ -394,6 +426,7 @@ def test_customer_blacklist_endpoint(api_server):
     status, result = _request_json(
         server, "/customer/blacklist", method="POST",
         payload={"customerId": customer_id, "blacklisted": True},
+    service=service,
     )
     assert status == 200
     assert result["customer"]["isBlacklisted"] is True
@@ -401,6 +434,7 @@ def test_customer_blacklist_endpoint(api_server):
     status, result = _request_json(
         server, "/customer/blacklist", method="POST",
         payload={"customerId": customer_id, "blacklisted": False},
+    service=service,
     )
     assert result["customer"]["isBlacklisted"] is False
 
@@ -410,6 +444,7 @@ def test_phone_blacklist_endpoint(api_server):
     status, result = _request_json(
         server, "/phone/blacklist", method="POST",
         payload={"phone": "+15550009999", "blacklisted": True, "reason": "abuse"},
+    service=service,
     )
     assert status == 200
     assert result["blacklisted"] is True
@@ -418,6 +453,7 @@ def test_phone_blacklist_endpoint(api_server):
     status, result = _request_json(
         server, "/phone/blacklist", method="POST",
         payload={"phone": "+15550009999", "blacklisted": False},
+    service=service,
     )
     assert service.database.is_phone_blacklisted("+15550009999") is False
 
@@ -432,10 +468,11 @@ def test_session_completes_automatically_and_does_not_spawn_a_new_one(api_server
         [{"loan_number": "fin-1", "first_name": "Fin", "last_name": "Ish",
           "phone_numbers": ["+15550000008"], "balance": "10", "days_overdue": "1"}]
     )
-    _, current = _request_json(server, "/customer/current")
+    _, current = _request_json(server, "/customer/current", service=service)
     status, result = _request_json(
         server, "/call/result", method="POST",
         payload={"customerId": current["id"], "outcome": "answered"},
+    service=service,
     )
     assert status == 200
     assert result["session"]["completed"] is True
@@ -445,7 +482,7 @@ def test_session_completes_automatically_and_does_not_spawn_a_new_one(api_server
     assert row["status"] == "completed"
 
     for _ in range(3):
-        _request_json(server, "/session/current")
+        _request_json(server, "/session/current", service=service)
 
     with service.database.connect() as conn:
         session_count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
@@ -469,7 +506,7 @@ def test_authenticated_request_threads_telegram_user_id_into_events(authenticate
         [{"loan_number": "auth-1", "first_name": "Au", "last_name": "Then",
           "phone_numbers": ["+15550000009"], "balance": "10", "days_overdue": "1"}]
     )
-    _, current = _request_json(server, "/customer/current")
+    _, current = _request_json(server, "/customer/current", service=service)
 
     fields = {
         "query_id": "test-query",
@@ -507,14 +544,100 @@ def test_invalid_init_data_is_rejected_with_401(authenticated_api_server):
     assert exc_info.value.code == 401
 
 
-def test_missing_credentials_are_still_allowed_through(api_server):
-    """Anonymous requests (no Authorization header at all) are still
-    permitted for now -- see MINI_APP_API.md for the plan to make
-    initData mandatory once the real frontend always sends it."""
+def test_missing_credentials_are_rejected_by_default(api_server):
+    """As of the security remediation pass: a request with no
+    Authorization header at all gets a hard 401 by default. See
+    MINI_APP_API.md -- the frontend was confirmed to always send the
+    header when running inside real Telegram (client.ts), and the
+    startup-timing race this used to be deferred for doesn't actually
+    exist given index.html's script ordering (telegram-web-app.js loads
+    synchronously in <head>, before the app's own module script)."""
     server, _service = api_server
-    status, result = _request_json(server, "/statistics")
-    assert status == 200
-    assert "today" in result
+    host, port = server.server_address
+    req = urllib.request.Request(f"http://{host}:{port}/statistics")
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        urllib.request.urlopen(req, timeout=5)
+    assert exc_info.value.code == 401
+
+
+def test_anonymous_access_allowed_only_when_explicitly_enabled(tmp_path: Path):
+    """mini_app_allow_anonymous is an explicit, off-by-default escape
+    hatch for local browser testing outside a real Telegram client (no
+    initData exists at all in that case). It must be opted into, not
+    just assumed -- this test builds a service with it turned on and
+    confirms *that* is what lets an unauthenticated request through,
+    not some accidental default."""
+    db_path = tmp_path / "mini_app_anon.db"
+    database = Database(path=db_path)
+    settings = Settings(
+        telegram_bot_token=TEST_BOT_TOKEN,
+        openai_api_key=None,
+        mini_app_allow_anonymous=True,
+    )
+    backend = build_backend(settings=settings, database=database)
+    service = MiniAppService(backend=backend)
+    api = MiniAppAPI(service)
+    server = api.create_server(host="127.0.0.1", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, result = _request_json(server, "/statistics", service=service)
+        assert status == 200
+        assert "today" in result
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_verified_init_data_without_user_field_is_still_allowed(authenticated_api_server):
+    """A signed, cryptographically-valid initData payload with no "user"
+    field (a legitimate startup-context init, per extract_user_id's own
+    docstring) proves the request genuinely came from Telegram even
+    though it can't be attributed to a specific user -- it must NOT be
+    treated the same as a request with no Authorization header at all."""
+    server, service = authenticated_api_server
+    fields = {"query_id": "test-query", "auth_date": str(int(time.time()))}
+    init_data = _sign_init_data(service.bot_token, fields)
+
+    host, port = server.server_address
+    req = urllib.request.Request(
+        f"http://{host}:{port}/statistics",
+        headers={"Authorization": f"tma {init_data}"},
+    )
+    with urllib.request.urlopen(req, timeout=5) as response:
+        assert response.status == 200
+
+
+def test_export_still_requires_admin_even_with_anonymous_allowed(tmp_path: Path):
+    """mini_app_allow_anonymous must only widen the default-deny
+    endpoints, never bypass /export's separate, stricter admin check --
+    the dev convenience flag for local testing shouldn't accidentally
+    reopen the admin-only export hole this same remediation pass would
+    otherwise be closing everywhere else."""
+    db_path = tmp_path / "mini_app_anon_export.db"
+    database = Database(path=db_path)
+    settings = Settings(
+        telegram_bot_token=TEST_BOT_TOKEN,
+        openai_api_key=None,
+        mini_app_allow_anonymous=True,
+    )
+    backend = build_backend(settings=settings, database=database)
+    service = MiniAppService(backend=backend)
+    api = MiniAppAPI(service)
+    server = api.create_server(host="127.0.0.1", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        req = urllib.request.Request(f"http://{host}:{port}/export?format=json")
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req, timeout=5)
+        assert exc_info.value.code == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_static_frontend_and_api_are_served_from_the_same_origin(tmp_path: Path):
@@ -556,7 +679,7 @@ def test_static_frontend_and_api_are_served_from_the_same_origin(tmp_path: Path)
 
         # Same server, same port: confirm the API still works too --
         # this IS the same-origin proof, not a separate concern.
-        status, result = _request_json(server, "/session/current")
+        status, result = _request_json(server, "/session/current", service=service)
         assert status == 200
         assert "customerCount" in result
     finally:
@@ -588,7 +711,7 @@ def test_duplicate_call_result_submission_does_not_double_record(api_server):
             }
         ]
     )
-    session_before = _request_json(server, "/session/current")[1]
+    session_before = _request_json(server, "/session/current", service=service)[1]
     first_customer_id = session_before["currentCustomer"]["id"]
 
     first_status, first_result = _request_json(
@@ -596,6 +719,7 @@ def test_duplicate_call_result_submission_does_not_double_record(api_server):
         "/call/result",
         method="POST",
         payload={"customerId": first_customer_id, "outcome": "contacted", "duration": 10},
+    service=service,
     )
     assert first_status == 200
     assert first_result["ok"] is True
@@ -605,6 +729,7 @@ def test_duplicate_call_result_submission_does_not_double_record(api_server):
         "/call/result",
         method="POST",
         payload={"customerId": first_customer_id, "outcome": "contacted", "duration": 999},
+    service=service,
     )
     assert second_status == 200
     assert second_result["ok"] is True

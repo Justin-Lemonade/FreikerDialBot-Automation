@@ -30,6 +30,12 @@ class Settings:
     mini_app_url: str | None = None
     mini_app_auth_max_age_seconds: int = 86400
     mini_app_static_dir: Path | None = None
+    # Off by default -- when False (the default), every /api endpoint
+    # except the static frontend itself requires a valid Authorization:
+    # tma <initData> header. This should only ever be set True for local
+    # browser testing outside a real Telegram client, where no initData
+    # exists at all. See MINI_APP_API.md for the full auth model.
+    mini_app_allow_anonymous: bool = False
 
     # Failover Provider Keys
     gemini_api_key: str | None = None
@@ -82,6 +88,8 @@ def load_settings() -> Settings:
     static_dir_default = str(BASE_DIR / "frontend" / "dist")
     mini_app_static_dir_str = os.getenv("MINI_APP_STATIC_DIR", static_dir_default).strip()
     mini_app_static_dir = Path(mini_app_static_dir_str)
+    # Explicit opt-in only -- see the Settings field docstring above.
+    mini_app_allow_anonymous = os.getenv("MINI_APP_ALLOW_ANONYMOUS", "").strip() == "1"
 
     return Settings(
         telegram_bot_token=token,
@@ -95,6 +103,7 @@ def load_settings() -> Settings:
             (os.getenv("MINI_APP_AUTH_MAX_AGE_SECONDS", "").strip() or "86400")
         ),
         mini_app_static_dir=mini_app_static_dir,
+        mini_app_allow_anonymous=mini_app_allow_anonymous,
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip() or None,
         gemini_model=os.getenv("GEMINI_MODEL", "").strip() or None,
         github_token=os.getenv("GITHUB_TOKEN", "").strip() or None,

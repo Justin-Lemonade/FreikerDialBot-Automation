@@ -392,6 +392,26 @@ class MiniAppService:
             conn.commit()
 
 
+_API_PATHS = frozenset({
+    "/session/current",
+    "/customer/current",
+    "/statistics",
+    "/session/next",
+    "/call/start",
+    "/call/result",
+    "/note",
+    "/queue/pause",
+    "/queue/call-back",
+    "/queue/upcoming",
+    "/customer/search",
+    "/customer/record",
+    "/customer/edit",
+    "/customer/blacklist",
+    "/phone/blacklist",
+    "/export",
+})
+
+
 class MiniAppRequestHandler(BaseHTTPRequestHandler):
     service: MiniAppService | None = None
 
@@ -438,6 +458,33 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
         except TelegramAuthError as exc:
             self._json(401, {"error": str(exc)})
             return True
+
+        # telegram_user_id is None in two distinct cases that must not be
+        # conflated: (a) no Authorization header was sent at all -- no
+        # proof this request came from Telegram -- or (b) a validated,
+        # signature-checked initData was sent but its payload had no
+        # "user" field (a legitimate startup-context init). Only (a) is
+        # rejected here; (b) already passed cryptographic verification in
+        # _authenticate() above and is allowed through, same as before.
+        # mini_app_allow_anonymous is an explicit, off-by-default opt-in
+        # for local browser testing outside a real Telegram client, where
+        # no initData exists at all -- see config.py's Settings docstring.
+        #
+        # Scoped to _API_PATHS specifically (not every request that
+        # reaches this method) -- an unrecognized path, including "/"
+        # itself, falls through to _serve_static below and must remain
+        # reachable without credentials: that's how the frontend's own
+        # JS gets loaded in the first place, before it has anything to
+        # authenticate with.
+        if (
+            path in _API_PATHS
+            and telegram_user_id is None
+            and not self._auth_verified
+            and not self.service.settings.mini_app_allow_anonymous
+        ):
+            self._json(401, {"error": "authentication required"})
+            return True
+
         if path == "/session/current" and method == "GET":
             self._json(200, self.service.get_current_session())
             return True
@@ -613,14 +660,27 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
 
     def _authenticate(self) -> int | None:
         """Extract and validate the Telegram user id from the
-        Authorization header, if present. Missing credentials are still
-        allowed through (anonymous) for every endpoint except /export,
-        which checks admin authorization separately -- see
-        MINI_APP_API.md for the plan to make initData mandatory once the
-        real frontend always sends it. An Authorization header that IS
-        present but fails signature validation is always a hard 401,
+        Authorization header, if present.
+
+        Returns None in two distinct cases, tracked separately via
+        self._auth_verified so callers can tell them apart:
+          - no Authorization header (or a malformed one) was sent at all
+            -- self._auth_verified stays False, no proof this request
+            came from Telegram;
+          - a well-formed "tma <initData>" header WAS sent and passed
+            cryptographic signature validation, but its payload simply
+            had no "user" field (a legitimate startup-context init) --
+            self._auth_verified is set True.
+
+        An Authorization header that IS present but fails signature
+        validation is always a hard 401 (TelegramAuthError propagates),
         never silently downgraded to anonymous.
+
+        Enforcement of whether a None result is allowed through lives in
+        _api_request, not here -- this method only answers "who is this,
+        if anyone," not "is that good enough for this request."
         """
+        self._auth_verified = False
         header = self.headers.get("Authorization", "")
         if not header:
             return None
@@ -633,6 +693,7 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
             self.service.bot_token,
             max_age_seconds=self.service.settings.mini_app_auth_max_age_seconds,
         )
+        self._auth_verified = True
         return extract_user_id(validated)
 
     def _read_body(self) -> bytes:
