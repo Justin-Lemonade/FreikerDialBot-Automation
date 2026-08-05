@@ -306,7 +306,12 @@ async def handle_customer_callback(update: Update, context: ContextTypes.DEFAULT
     """Handles customer_view:<id> -- fired either from /customer's search
     results or from the "ℹ️ More Info" button on the active call card
     (queue_ui.queue_keyboard). Same handler either way; the card doesn't
-    need to know or care where the tap came from."""
+    need to know or care where the tap came from.
+    
+    Stores the sent message ID in context.user_data so queue_ui's
+    handle_queue_callback can delete it when the queue advances to the
+    next customer -- the "More Info" page should disappear after the
+    operator processes an outcome."""
     query = update.callback_query
     database = _database_from_context(context)
     try:
@@ -316,7 +321,17 @@ async def handle_customer_callback(update: Update, context: ContextTypes.DEFAULT
         if record is None:
             await query.message.reply_text("Customer not found.")
             return
-        await query.message.reply_text(render_customer_record(record))
+        sent = await query.message.reply_text(render_customer_record(record))
+        # Store the message so the queue handler can clean it up when
+        # the operator advances to the next customer.
+        # Use getattr for test compatibility -- fake contexts may not
+        # have user_data.
+        user_data = getattr(context, "user_data", None)
+        if user_data is not None:
+            user_data["more_info"] = {
+                "chat_id": sent.chat_id,
+                "message_id": sent.message_id,
+            }
     except Exception:
         log.exception("Customer callback failed")
         await query.message.reply_text("Something went wrong loading that record.")
@@ -470,17 +485,51 @@ async def handle_potential_edit_block(update: Update, context: ContextTypes.DEFA
 # ---------------------------------------------------------------------------
 
 async def blacklist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/blacklist <loan number> [reason]"""
-    if not context.args:
-        await update.effective_message.reply_text("Usage: /blacklist <loan number>")
-        return
+    """/blacklist [loan number] [reason]
+    
+    With no arguments: blacklists the current customer's primary phone
+    number (the one the operator is currently looking at in the queue).
+    With a loan number: blacklists the customer record itself (the
+    whole customer is skipped by the queue engine)."""
     database = _database_from_context(context)
     queue_engine = _queue_engine_from_context(context)
+    telegram_user_id = _user_id(update)
+
+    if not context.args:
+        # No args: blacklist the current customer's phone number.
+        queue_state = database.get_queue_session()
+        current_id = queue_state.get("current_customer_id")
+        if not current_id:
+            await update.effective_message.reply_text(
+                "No active customer to blacklist. Use /blacklist <loan number> "
+                "to blacklist a specific customer by loan number."
+            )
+            return
+        customer = await database.async_get_customer(int(current_id))
+        if customer is None:
+            await update.effective_message.reply_text("Current customer not found.")
+            return
+        phones = customer.get("phone_numbers") or []
+        if not phones:
+            await update.effective_message.reply_text(
+                f"{customer.get('first_name', '')} {customer.get('last_name', '')} "
+                f"(Loan #{customer.get('loan_number', '')}) has no phone numbers on file."
+            )
+            return
+        phone = phones[0]
+        queue_engine.blacklist_phone(phone, telegram_user_id=telegram_user_id)
+        await update.effective_message.reply_text(
+            f"🚫 Blacklisted phone {phone} for "
+            f"{customer.get('first_name', '')} {customer.get('last_name', '')} "
+            f"(Loan #{customer.get('loan_number', '')})."
+        )
+        return
+
     customer = await _resolve_customer_by_identifier(database, context.args[0])
     if customer is None:
         await update.effective_message.reply_text(f'No customer found matching "{context.args[0]}".')
         return
-    updated = queue_engine.blacklist_customer(customer["id"], True, telegram_user_id=_user_id(update))
+    updated = queue_engine.blacklist_customer(customer["id"], True, telegram_user_id=telegram_user_id)
     await update.effective_message.reply_text(
         f"🚫 Blacklisted {updated['first_name']} {updated['last_name']} (Loan #{updated['loan_number']})."
     )

@@ -167,6 +167,30 @@ class TestBlacklist:
             ).fetchone()
         assert row["reason"] == "updated reason"
 
+    def test_first_non_blacklisted_phone_skips_blacklisted(self, database):
+        """When a phone is blacklisted, first_non_blacklisted_phone must
+        return the next non-blacklisted phone from the list, not the
+        blacklisted one -- so the Mini App API never shows a blacklisted
+        number as the customer's contact phone."""
+        database.blacklist_phone("+15550001111")
+        database.blacklist_phone("+15550002222")
+        result = database.first_non_blacklisted_phone(["+15550001111", "+15550002222", "+15550003333"])
+        assert result == "+15550003333"
+
+    def test_first_non_blacklisted_phone_falls_back_to_first_when_all_blacklisted(self, database):
+        """If every phone number for a customer is blacklisted, fall back
+        to the first phone rather than returning None/empty -- the
+        operator can still see the number and decide what to do."""
+        database.blacklist_phone("+15550001111")
+        result = database.first_non_blacklisted_phone(["+15550001111"])
+        assert result == "+15550001111"
+
+    def test_first_non_blacklisted_phone_returns_first_when_none_blacklisted(self, database):
+        """No blacklisted phones in the list means the first phone is
+        returned unchanged -- the normal case, no filtering needed."""
+        result = database.first_non_blacklisted_phone(["+15550001111", "+15550002222"])
+        assert result == "+15550001111"
+
 
 class TestGetCustomerRecord:
     def test_returns_none_for_missing_customer(self, database):

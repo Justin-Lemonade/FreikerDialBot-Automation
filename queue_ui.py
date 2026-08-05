@@ -307,6 +307,24 @@ async def handle_queue_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             return
 
+        # Clean up the "More Info" message if one was shown -- it should
+        # disappear when the operator advances to the next customer.
+        # Use getattr for test compatibility -- fake contexts may not
+        # have user_data.
+        user_data = getattr(context, "user_data", None)
+        if user_data is not None:
+            more_info = user_data.pop("more_info", None)
+            if more_info:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=more_info["chat_id"],
+                        message_id=more_info["message_id"],
+                    )
+                except TelegramError:
+                    # The message may already have been deleted by the user or
+                    # expired -- that's fine, nothing to do.
+                    pass
+
         if selection.complete:
             await query.edit_message_text(
                 _completion_text(queue, telegram_user_id),

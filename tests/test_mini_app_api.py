@@ -617,3 +617,33 @@ def test_duplicate_call_result_submission_does_not_double_record(api_server):
     warned_events = [e for e in events if e["event_type"] == "customer_warned"]
     assert len(warned_events) == 1
     assert warned_events[0]["duration_seconds"] == 10  # the FIRST duration, not the duplicate's 999
+
+
+def test_customer_payload_skips_blacklisted_phone(api_server):
+    """_customer_payload must return a non-blacklisted phone when the
+    customer's primary phone is blacklisted -- the Mini App should never
+    show a blacklisted number as the contact phone."""
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "loan-bl-001",
+                "first_name": "Blake",
+                "last_name": "Listed",
+                "phone_numbers": ["+15550009991", "+15550009992"],
+                "balance": "200",
+                "days_overdue": "10",
+            }
+        ]
+    )
+    # Blacklist the primary phone
+    service.database.blacklist_phone("+15550009991")
+
+    # Get the customer payload via the API
+    status, session = _request_json(server, "/session/current")
+    assert status == 200
+    customer = session["currentCustomer"]
+    assert customer is not None
+    # The payload should show the non-blacklisted phone, not the blacklisted one
+    assert customer["phone"] == "+15550009992"
+    assert customer["phone"] != "+15550009991"
