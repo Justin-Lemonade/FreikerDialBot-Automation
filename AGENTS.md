@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Last verified against commit: f91e405bbbccb5ea452ad8ed3f2cb9ac7361e1be, plus this commit's own changes (launch-path consolidation + blacklist-completion fix -- see below)
-Last updated: 2026-07-24
+Last verified against commit: 52dfb30 (phone blacklisting + UI cleanup), plus the changes in this pass (documentation freshness, CI lint step, cleanup)
+Last updated: 2026-08-05
 
 This is the canonical instruction file for AI coding agents (Claude, Gemini,
 Copilot, or others) working on this repository. If other agent-instruction
@@ -83,6 +83,10 @@ Verify, then act.
 - If you find another instance of this pattern, fix the doc, don't invent
   code to match it, unless the current architecture genuinely needs the
   behavior (verify with tests, not with doc claims).
+- `SECURITY_AUDIT_REPORT.md` claimed `data/` was fully gitignore-excluded
+  and git history was clean. Neither was true — 80 files were tracked
+  under `data/`. Corrected in a prior pass; remediation decision is in
+  `SETUP_AFTER_CLAUDE.md` (repo owner must decide on history rewrite).
 
 ## Current project phase
 
@@ -114,7 +118,7 @@ export OPENAI_API_KEY="sk-test"
 pytest tests/ -q
 ```
 
-Current status: 251 passed, 0 failed (verified against commit `f2e6acc`).
+Current status: 268 passed, 0 failed (verified against commit `52dfb30`).
 
 **Side effect to watch for:** running the suite modifies `data/bot.log`
 (a tracked file the logger writes to). Run `git checkout -- data/bot.log`
@@ -135,7 +139,7 @@ npm run build         # production build validation
 ```
 
 Current status: typecheck clean, build succeeds (verified against commit
-`f2e6acc`). No frontend test suite exists yet.
+`52dfb30`). No frontend test suite exists yet.
 
 ## Full validation suite (run before any push)
 

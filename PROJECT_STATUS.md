@@ -1,8 +1,8 @@
 # PROJECT_STATUS.md
 
-Last verified against commit: 0fea725 (retro sci-fi redesign), plus this
-pass's own change (CI collection-failure root-cause fix -- see below)
-Last updated: 2026-07-27
+Last verified against commit: 52dfb30 (phone blacklisting + UI cleanup),
+plus the changes in this pass (documentation freshness, CI lint step, cleanup)
+Last updated: 2026-08-05
 
 Quick-reference state for a new AI session. For architecture and rules,
 see `AGENTS.md`. For the full open-issues list, see `BACKLOG.md`. This
@@ -79,8 +79,8 @@ make — see `SETUP_AFTER_CLAUDE.md`.
 
 ## What was last verified, and how?
 
-- **Commit:** `0fea725` (prior to this pass's own `pytest.ini` addition)
-- **Backend tests:** 264 passed, 0 failed — run directly against a fresh
+- **Commit:** `52dfb30` (prior to this pass's documentation/cleanup changes)
+- **Backend tests:** 268 passed, 0 failed — run directly against a fresh
   clone of this commit, not assumed from a prior session. Verified with
   *both* `python -m pytest tests/ -q` and bare `pytest tests/ -q` (the
   latter matching CI's actual invocation exactly), in a fresh venv, with
@@ -88,9 +88,10 @@ make — see `SETUP_AFTER_CLAUDE.md`.
 - **Frontend:** not re-checked this pass (CI's frontend job was already
   green on this commit — see below); no frontend files touched.
 - **CI:** was added several passes ago but had never actually run
-  successfully — see "known to be broken," now fixed. Check the Actions
-  tab on the next commit to confirm the fix holds in the real CI
-  environment, not just this reproduction.
+  successfully — see "known to be broken," now fixed. A lint step (oxlint)
+  was also added to the frontend CI job in this pass. Check the Actions
+  tab on the next commit to confirm both hold in the real CI environment,
+  not just this reproduction.
 
 ## Known documentation drift (see AGENTS.md for the full rule)
 

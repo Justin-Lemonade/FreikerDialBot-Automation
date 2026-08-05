@@ -36,7 +36,7 @@ jobs:
         run: pytest tests/ -q
 
   frontend:
-    name: Frontend typecheck + build
+    name: Frontend lint + typecheck + build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -56,6 +56,12 @@ jobs:
         # Confirmed locally: npm install caused unrelated lockfile diffs,
         # npm ci did not.
         run: npm ci
+
+      - name: Lint
+        # oxlint is already installed via devDependencies (npm ci above).
+        # It does not require any configuration file to run; the existing
+        # .oxlintrc.json in the frontend directory defines the rules.
+        run: npm run lint
 
       - name: Typecheck
         run: npx tsc -b --noEmit
