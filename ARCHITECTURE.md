@@ -2,13 +2,13 @@
 
 Technical reference for the FreikerDialBot Automation codebase.
 
-This file replaces the old split between a general architecture note and a separate Mini App API note. It is the place to describe how the pieces fit together and which layer owns which responsibility.
+This file replaces the old split between a general architecture note and a separate Mini App API note. It describes how the pieces fit together and which layer owns which responsibility.
 
 ## High-level architecture
 
 FreikerDialBot Automation is a Telegram-first debt-collection calling workflow with a shared Python backend and a React/TypeScript Mini App.
 
-The important rule is that the Telegram bot and the Mini App share the same business logic and data model. The frontend surfaces are different, but the queue, session, statistics, import, search, edit, and security rules should stay shared.
+The important rule is that the Telegram bot and the Mini App share the same business logic and data model. The frontend surfaces are different, but the queue, session, statistics, import, search, edit, and security rules stay shared.
 
 ```text
 Telegram client
@@ -39,18 +39,18 @@ Telegram client
 
 - `bot.py` is the Telegram entrypoint.
 - `telegram_ui.py`, `queue_ui.py`, `stats_ui.py`, `customer_ui.py`, and `admin_commands.py` render the Telegram experience and call the shared backend.
-- Telegram-side admin actions must keep using the shared security rules.
+- Telegram-side admin actions use the shared security rules.
 
 ### Mini App
 
 - `mini_app_api.py` is an HTTP adapter, not a second backend.
 - It translates HTTP requests into calls on the shared backend.
 - The React/TypeScript app in `frontend/` is presentation only.
-- The Mini App should not reimplement queue, session, or statistics logic in the frontend.
+- The Mini App does not reimplement queue, session, or statistics logic in the frontend.
 
 ## Mini App API contract
 
-The Mini App API exists to expose the same backend state to the web UI.
+The Mini App API exposes the same backend state to the web UI.
 
 ### Authentication and authorization
 
@@ -59,21 +59,31 @@ The Mini App API exists to expose the same backend state to the web UI.
 - `telegram_auth.py` validates the Telegram payload.
 - `security.py` owns the shared admin check.
 - `MINI_APP_ALLOW_ANONYMOUS=1` is a development-only escape hatch and should stay off outside local testing.
+- Real API routes are listed in `_API_PATHS`; `/` and static assets stay open so the frontend can load before it has credentials.
+- `mini_app_api.py` also accepts `/api/*` as an alias for the same route set.
 
-### Route groups
+### Current route groups
 
-The API is organized around the same responsibilities as the backend:
+The API is organized around the same responsibilities as the backend. The current route set includes:
 
-- Session and progress state.
-- Current customer and queue movement.
-- Search and customer records.
-- Editing and blacklisting.
-- Notes and history.
-- Call outcome handling.
-- Statistics.
-- Export.
+- `GET /session/current`
+- `GET /customer/current`
+- `GET /statistics`
+- `POST /session/next`
+- `POST /call/start`
+- `POST /call/result`
+- `POST /note`
+- `POST /queue/pause`
+- `POST /queue/call-back`
+- `GET /queue/upcoming`
+- `GET /customer/search`
+- `GET /customer/record`
+- `POST /customer/edit`
+- `POST /customer/blacklist`
+- `POST /phone/blacklist`
+- `GET /export`
 
-The exact route list should be verified against `mini_app_api.py` before relying on it in another document or in code.
+There is no `POST /queue/resume` route yet, and there is no `POST /call/return` route in the current code.
 
 ### Ownership rules
 
@@ -95,7 +105,7 @@ Keep these boundaries stable:
 
 ## Current architectural notes
 
-- The Telegram bot and Mini App should stay interchangeable frontends over the same data.
+- The Telegram bot and Mini App stay interchangeable frontends over the same data.
 - The UI can change independently of the backend.
 - New features should be added once in the shared backend and then surfaced to each frontend.
 - If a new route or UI surface is added, it should call the shared service instead of reimplementing the rule.
