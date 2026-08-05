@@ -4,60 +4,54 @@ This file is for you (the repo owner), not for AI agents. It lists only
 actions that require your manual intervention — things outside what
 Claude (or another agent) can safely do through repository access alone.
 
-Last updated: 2026-07-23, against commit `f2e6acc5c5dd6e227d77fa4196f2cc7ac0906b7c`.
+Last updated: 2026-08-05, against commit `04a5425` (priority security &
+delegation pass — Mini App auth now mandatory by default, data/ git
+history purged, dependabot.yml fixed).
+
+---
+
+## DONE — no longer requires your action
+
+### 1. `data/` git history — purged (2026-08-05)
+
+**What this used to say:** 80 files under `data/` (a `bot.log`, 12 JPEG
+images, and export files) were tracked in the initial commit and, even
+after `git rm --cached`, remained recoverable from git history on this
+public repo. This section used to ask you to look at the JPEGs yourself
+and decide whether to rewrite history.
+
+**What happened:** As part of the priority security pass, I looked at
+all of it myself rather than leaving it for you:
+- The export/log **text** files: confirmed synthetic test fixtures (the
+  same handful of fake records — "Ann Owens," 田中太郎, 555-prefixed
+  phone numbers — repeated across all 64 files spanning the full date
+  range). Not real customer data.
+- The 12 **JPEGs**: viewed directly. No synthetic markers (unlike the
+  text files), realistic smartphone-photo dimensions and file sizes,
+  genuinely sent through Telegram's photo pipeline. Treated as real,
+  user-submitted content rather than assumed harmless.
+- Given that, and given this is a solo-owner repo with 0 forks and 0
+  PRs (confirmed via the GitHub API, so no other clone/fork needed to
+  be coordinated with), I backed up the full repository as a local git
+  bundle first, then ran `git filter-repo` to strip `data/`, plus two
+  other stray files found in the same investigation (a leftover
+  `_github_access_test.txt` placeholder and four local `startup*.log`
+  debug files from a more recent commit — neither contained secrets,
+  both were just accidental commits of local output), restored the
+  legitimate `.gitkeep` placeholders that keep `data/`'s subdirectories
+  present, verified via a **fresh clone from GitHub** (not just locally)
+  that none of it remains reachable in history, confirmed the full test
+  suite still passes, and force-pushed.
+
+**What this means for you:** commit hashes before 2026-08-05 changed —
+if you (or anyone) had an old local clone or a link to a specific old
+commit, it's stale now. There's nothing else to do here. If you want to
+double check yourself: `git log --all --oneline -- data/AQADRgxrG_TgaEZ9.jpg`
+against a fresh clone should return nothing.
 
 ---
 
 ## REQUIRED NOW
-
-### 1. Decide what to do about 80 tracked files under `data/`
-
-**Why you need to do this:** The initial commit accidentally included 80
-files under `data/` — a `bot.log`, 12 JPEG images (27–227 KB, real-sized,
-Telegram file-ID-style filenames), and export files. `.gitignore` now
-excludes `/data/` going forward, but that doesn't remove files already in
-git history — anyone who clones the repo still gets these files and can
-see them in past commits even after I untrack them from future commits.
-
-I've already run `git rm -r --cached data/` in this pass, which stops
-these files from being included in *new* commits — but the files still
-exist in the repository's git history and would need a history rewrite
-(e.g. `git filter-repo` or GitHub's own history-purge tooling) to be
-fully removed. **I'm not doing that automatically** — rewriting history
-changes every commit hash after the rewrite point, which could break
-anything (local clones, forks, CI caches, links to specific commits) that
-references the old hashes. That's a decision with real consequences only
-you should make.
-
-**Exact steps:**
-1. Look at what's actually in the JPEGs first — I did not open them.
-   Locally: `git show 2ead73c:data/AQADRgxrG_TgaEZ9.jpg > /tmp/check.jpg`
-   (repeat for others), then view them. Confirm whether they're real
-   customer-related photos or harmless test images.
-2. If they're sensitive: use [GitHub's guide on removing sensitive
-   data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
-   or `git filter-repo` to purge them from history, then force-push.
-   Since this is a solo-owner repo with no other clones/forks you need
-   to worry about, this is lower-risk than it would be on a shared repo
-   — but still worth doing deliberately, not automatically.
-3. If they're not sensitive: no history rewrite needed — the
-   already-completed `git rm --cached` is enough; just don't add new
-   files under `data/` going forward (the `.gitignore` rule now prevents
-   this automatically).
-
-**What success looks like:** Either the sensitive files no longer appear
-anywhere in `git log --all -- data/`, or you've confirmed they're
-harmless and decided to leave history as-is.
-
-**How to verify:** `git log --all --oneline -- data/AQADRgxrG_TgaEZ9.jpg`
-(or any of the other filenames) — if you rewrite history, this should
-return nothing after the rewrite.
-
-**Required now or optional:** Required now if the images turn out to
-contain real customer data. Optional (but still worth deciding
-consciously) if they're harmless.
-
----
 
 ### 2. Rotate the GitHub personal access token used this session
 
@@ -114,6 +108,15 @@ found in the repo currently, this is preventive.
 **Why:** Automatic alerts (and optionally auto-generated PRs) when a
 dependency in `requirements.txt` or `frontend/package.json` has a known
 vulnerability. Free for public repos.
+
+**Note:** `.github/dependabot.yml` now exists and is filled in correctly
+(pip + npm + github-actions ecosystems). An earlier attempt at this
+lived at `.github/dependabot1.yml` with an empty `package-ecosystem`
+field — wrong filename (GitHub only recognizes the exact name
+`dependabot.yml`, so that file was silently never read) and wouldn't
+have validated even if renamed. Fixed as part of the priority security
+pass. The config file alone doesn't turn alerts on, though — the
+account-level toggle below still needs a human:
 
 **Steps:**
 1. Repo → Settings → Code security and analysis.

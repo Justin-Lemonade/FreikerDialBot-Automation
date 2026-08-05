@@ -1,12 +1,30 @@
 # PROJECT_STATUS.md
 
-Last verified against commit: 52dfb30 (phone blacklisting + UI cleanup),
-plus the changes in this pass (documentation freshness, CI lint step, cleanup)
+Last verified against commit: 04a5425 (priority security & delegation
+pass)
 Last updated: 2026-08-05
 
 Quick-reference state for a new AI session. For architecture and rules,
 see `AGENTS.md`. For the full open-issues list, see `BACKLOG.md`. This
 file only answers "where are we right now" — it does not duplicate either.
+
+## What happened in the priority security & delegation pass (2026-08-05)
+
+- **`data/` git history purged.** The 80 files flagged in
+  `SETUP_AFTER_CLAUDE.md` (12 JPEGs + 64 synthetic export fixtures +
+  `bot.log`) are no longer recoverable from history — backed up first,
+  purged with `git filter-repo`, verified via a fresh clone, force-pushed.
+  Full writeup moved to `SETUP_AFTER_CLAUDE.md`'s "DONE" section.
+- **Mini App API auth is now mandatory by default**, not opt-in.
+  Missing/malformed credentials → 401 on every real endpoint; `/` and
+  static assets stay open. See `MINI_APP_API.md` and `AGENTS.md`'s
+  architecture section.
+- Two regressions from an earlier commit fixed: `bot.py`'s missing
+  `__main__` guard (the app's documented entry point did nothing) and a
+  `--no-mini-app`/`--no-mini_app` flag typo.
+- `.github/dependabot.yml` fixed — a previous attempt lived at the wrong
+  filename (`dependabot1.yml`, silently never read by GitHub) with an
+  empty config.
 
 ## What is the project?
 
@@ -79,19 +97,17 @@ make — see `SETUP_AFTER_CLAUDE.md`.
 
 ## What was last verified, and how?
 
-- **Commit:** `52dfb30` (prior to this pass's documentation/cleanup changes)
-- **Backend tests:** 268 passed, 0 failed — run directly against a fresh
+- **Commit:** `04a5425` (priority security & delegation pass)
+- **Backend tests:** 309 passed, 0 failed — run directly against a fresh
   clone of this commit, not assumed from a prior session. Verified with
-  *both* `python -m pytest tests/ -q` and bare `pytest tests/ -q` (the
-  latter matching CI's actual invocation exactly), in a fresh venv, with
-  CI's exact dummy env vars. Both pass identically after this pass's fix.
-- **Frontend:** not re-checked this pass (CI's frontend job was already
-  green on this commit — see below); no frontend files touched.
-- **CI:** was added several passes ago but had never actually run
-  successfully — see "known to be broken," now fixed. A lint step (oxlint)
-  was also added to the frontend CI job in this pass. Check the Actions
-  tab on the next commit to confirm both hold in the real CI environment,
-  not just this reproduction.
+  *both* `python -m pytest tests/ -q` and bare `pytest tests/ -q`, with
+  CI's exact dummy env vars.
+- **Frontend:** typechecks clean (`tsc -b --noEmit`), production build
+  succeeds, re-verified this pass after the phone-blacklisting and
+  reference-mockup UI changes.
+- **CI:** frontend job now includes a lint step (oxlint), added in the
+  documentation-freshness pass. Check the Actions tab to confirm it's
+  green on this commit, not just this local reproduction.
 
 ## Known documentation drift (see AGENTS.md for the full rule)
 

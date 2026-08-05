@@ -245,11 +245,11 @@ same-day-recontact detection and the `customer_events` history; the
 
 | Area | Status | Recommendation |
 |---|---|---|
-| **Mini App authentication** | Telegram `initData` HMAC validation implemented (`telegram_auth.py`, prior pass), wired into every Mini App request. Anonymous requests (no `Authorization` header) are still allowed through for most endpoints — deliberate, temporary, documented in `MINI_APP_API.md`. | Flip to mandatory once the real frontend always sends `initData` (one-line change, already noted in `MINI_APP_API.md`). |
+| **Mini App authentication** | Telegram `initData` HMAC validation implemented (`telegram_auth.py`, prior pass), wired into every Mini App request. **Fixed in the 2026-08-05 priority security pass:** auth is now mandatory by default — missing/malformed credentials get a 401 on every real endpoint (`_API_PATHS`); `/` and static assets stay open, as they must. `MINI_APP_ALLOW_ANONYMOUS=1` is an explicit, off-by-default dev-only escape hatch. | None further needed for the cutover itself. See `MINI_APP_API.md`. |
 | **Export authorization** | **Fixed this pass.** `GET /export` now requires `security.is_admin`, matching Telegram's `/export` exactly, using the same shared rule. | None further needed for parity; if finer-grained permissions are wanted later (e.g. "can export" separate from "can reset"), that's a `security.py` extension — see Tech Debt. |
 | **Permissions** | Single binary level: admin or not, via `ADMIN_TELEGRAM_USER_IDS`. No RBAC. | Adequate for current feature set (reset/clear/export are the only gated actions on either frontend). Don't build RBAC speculatively — revisit only when a second permission tier is actually needed (e.g. "can edit customers" separate from "can export"). |
 | **Audit logging** | **Improved this pass.** Successful `reset`/`clear`/`export` actions (both frontends) now write an `admin_action` event to `customer_events`, attributed to the acting `telegram_user_id`, reusing the existing event-history mechanism rather than a new table. | Denied/unauthorized attempts are **not** currently logged (only successes) — worth adding if detecting probing/abuse attempts matters; deliberately not done here since it changes log volume and semantics in a way worth deciding separately. |
-| **Anonymous API access** | Most Mini App endpoints remain open to anonymous requests (see Authentication row). CORS is `Access-Control-Allow-Origin: *` on every response. | Both are fine for local development against a not-yet-built frontend; both need tightening before any public deployment — restrict CORS to the real Mini App origin, and decide the mandatory-auth cutover, together, as a pre-launch step. |
+| **Anonymous API access** | **Fixed in the 2026-08-05 pass** — see Authentication row above. CORS is still `Access-Control-Allow-Origin: *` on every response. | CORS restriction to the real Mini App origin is the one piece of this row still open — see `BACKLOG.md` #2. |
 
 ---
 
@@ -258,9 +258,9 @@ same-day-recontact detection and the `customer_events` history; the
 Carried forward from `BACKLOG.md` (not re-litigated here) plus what
 this pass surfaced:
 
-1. Anonymous Mini App access is still the default outside `/export` —
-   see Security Review above.
-2. CORS wide open (`*`) — same.
+1. ~~Anonymous Mini App access is still the default outside `/export`~~ —
+   fixed 2026-08-05, see Security Review above.
+2. CORS wide open (`*`) — still open, same section.
 3. No `POST /queue/resume`, no Mini-App-side import, no Telegram-side
    notifications, no "Paid" button in Telegram's `queue_ui.py` (Mini
    App has it, Telegram doesn't — a feature-parity gap, not a bug).
@@ -293,10 +293,9 @@ In rough priority order:
    App). Directly serves goal #1 ("operator should never need to
    remember anything") and the data already exists — this is the
    highest value-to-effort item on the list.
-2. **Decide the anonymous-access cutover.** Once there's a real Mini App
-   frontend sending `initData` on every request, flip the "no header =
-   anonymous" default to "no header = 401" for mutating routes, and
-   tighten CORS at the same time.
+2. ~~Decide the anonymous-access cutover.~~ Done 2026-08-05 — auth is
+   mandatory by default now. CORS is the one piece of this that's still
+   open (tighten once the real Mini App origin is stable).
 3. **Blacklist-by-phone**, as its own table (see Customer Model Review)
    — independent of customer-row lifecycle, needed before
    blacklist-by-customer would even be safe to rely on for repeat

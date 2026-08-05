@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Last verified against commit: 52dfb30 (phone blacklisting + UI cleanup), plus the changes in this pass (documentation freshness, CI lint step, cleanup)
+Last verified against commit: 04a5425 (priority security & delegation pass: Mini App auth now mandatory by default, data/ git history purged, ai_parser.py prompt duplication and mock-detection dead code fixed, update_queue_session whitelisted, static-file path check hardened, WAL mode + busy_timeout added, dependabot.yml fixed, dedicated ai_parser test coverage added)
 Last updated: 2026-08-05
 
 This is the canonical instruction file for AI coding agents (Claude, Gemini,
@@ -38,7 +38,14 @@ workflow a proper mobile UI instead of chat buttons.
 - `session_manager.py` / `statistics_engine.py` — session lifecycle + daily/lifetime stats.
 - `customer_ui.py` / `queue_ui.py` / `stats_ui.py` / `telegram_ui.py` — Telegram-side rendering and command handlers.
 - `admin_commands.py` / `security.py` — authorization-gated admin actions (reset/clear/export).
-- `mini_app_api.py` + `telegram_auth.py` — HTTP API + Telegram initData auth for the Mini App.
+- `mini_app_api.py` + `telegram_auth.py` — HTTP API + Telegram initData
+  auth for the Mini App. **Auth is mandatory by default** (as of the
+  priority security pass): every endpoint in `_API_PATHS` requires a
+  valid `Authorization: tma <initData>` header or gets a 401; `/` and
+  static assets stay open (the frontend's JS has to load before it can
+  authenticate anything). `MINI_APP_ALLOW_ANONYMOUS=1` is an explicit,
+  off-by-default opt-in for local browser testing outside real
+  Telegram — never set it anywhere else. See `MINI_APP_API.md`.
 - `backend.py` — shared construction (`build_backend()`) so `bot.py` and `mini_app_api.py` don't duplicate wiring.
 - `frontend/` — Telegram Mini App UI (React/TypeScript/Vite). **Built and typechecks clean**, but has no automated test coverage of its own yet.
 - Tests live in `tests/` as `test_*.py`, run with `pytest`.
@@ -118,7 +125,7 @@ export OPENAI_API_KEY="sk-test"
 pytest tests/ -q
 ```
 
-Current status: 268 passed, 0 failed (verified against commit `52dfb30`).
+Current status: 309 passed, 0 failed (verified against commit `04a5425`, both `python -m pytest tests/ -q` and bare `pytest tests/ -q`).
 
 **Side effect to watch for:** running the suite modifies `data/bot.log`
 (a tracked file the logger writes to). Run `git checkout -- data/bot.log`

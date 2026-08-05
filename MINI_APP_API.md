@@ -55,7 +55,7 @@ is no `X-Telegram-Init-Data` fallback despite a previous version of this
 doc claiming one existed. `initData` is the raw string Telegram's WebApp
 JS SDK exposes as `window.Telegram.WebApp.initData`.
 
-**Current enforcement (fixed as of the 2026-07-29 security remediation pass):**
+**Current enforcement (fixed as of the 2026-08-05 security remediation pass):**
 - No `Authorization` header at all → **401** on every endpoint in
   `_API_PATHS` (everything except `/` and static assets, which must stay
   reachable without credentials -- that's how the frontend's own JS gets

@@ -29,7 +29,7 @@ reasoning.
 - ~~No Telegram-side Mini App launch mechanism~~ — fixed. Menu button +
   `/app` command.
 - ~~Auth enforcement was opt-in for most endpoints, not mandatory~~ —
-  fixed (2026-07-29 security remediation pass). Missing/malformed
+  fixed (2026-08-05 priority security pass). Missing/malformed
   credentials now get a hard 401 on every endpoint in `_API_PATHS`;
   `/` and static assets stay reachable without auth (they have to be —
   that's how the frontend's own JS loads before it has anything to
@@ -39,6 +39,41 @@ reasoning.
   direct inspection, not assumed. `MINI_APP_ALLOW_ANONYMOUS=1` is a new,
   explicit, off-by-default opt-in for local browser testing outside a
   real Telegram client. See `MINI_APP_API.md`.
+- ~~No SQLite WAL mode / busy timeout~~ — fixed. `Database.connect()`
+  now sets `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000`,
+  reducing "database is locked" risk under concurrent access from the
+  bot and the Mini App API at once.
+- ~~Static-file path-traversal check used a string-prefix comparison~~ —
+  fixed. `_serve_static` now uses `Path.is_relative_to()` instead of
+  `str.startswith()`, closing the theoretical sibling-directory
+  collision case (e.g. a `dist`/`dist-secret` pair sharing a prefix).
+- ~~`update_queue_session` accepted arbitrary `**fields` with no column
+  whitelist~~ (unlike its sibling `update_customer_fields`) — fixed,
+  same `editable`-set pattern now applied to both. Wasn't exploitable
+  before (every call site already used hardcoded kwargs), just
+  inconsistent hardening.
+- ~~`AI_PROMPT`/`SYSTEM_PROMPT` independently duplicated the same
+  9-field schema~~ — fixed. Both now build from shared `_FIELD_RULES`/
+  `_RULES_LISTING` constants; a new `TestPromptSchemaConsistency` test
+  class guards against the two drifting apart again.
+- ~~`ai_parser.py`'s `.responses.create()` path was only reachable via
+  `isinstance`-based mock detection~~ (dead code in real production
+  runs) — fixed. Replaced with an explicit `self.bypass_router` flag
+  tests set directly, instead of branching on the concrete type of a
+  collaborator.
+- ~~No dedicated test coverage for `ai_parser.py`~~ — fixed.
+  `tests/test_ai_parser.py` added: provider configuration, failover
+  ordering, vision-gating, malformed-response handling, and a
+  sensitive-data-isn't-logged check.
+- ~~`oxlint` configured but never run in CI~~ — fixed, added as a step
+  in the frontend CI job.
+- ~~Root-level stale build artifacts (`assets/`, `index.html`) tracked
+  despite being gitignored~~ — removed from the tree.
+- ~~`.github/dependabot.yml` missing/broken~~ — fixed. A previous
+  attempt lived at `.github/dependabot1.yml` (wrong filename — GitHub
+  only recognizes the exact name `dependabot.yml`, so it was silently
+  never read) with an empty `package-ecosystem`. Replaced with a
+  correct config covering pip, npm, and github-actions.
 - ~~**`GET /export` has no authorization gate**~~ — **fixed this pass.**
   Now requires `security.is_admin`, matching Telegram's `/export`
   exactly, via the new shared `security.py`. Tested (anonymous → 403,
