@@ -37,7 +37,9 @@ npm run build
 ## Documentation
 
 - `AGENTS.md` — rules and working conventions.
-- `PROJECT_STATUS.md` — current snapshot of what is built and what remains open.
+- `ARCHITECTURE.md` — technical architecture and Mini App API contract.
+- `PROJECT_STATUS.md` — current snapshot, open issues, and owner decisions.
+- `SECURITY_AUDIT_REPORT.md` — security findings and current security posture.
 
 ## Repository layout
 
