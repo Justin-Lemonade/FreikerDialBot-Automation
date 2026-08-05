@@ -6,7 +6,7 @@ This file is intentionally separate from `PROJECT_STATUS.md`. It is the place fo
 
 ## Scope
 
-The project handles customer data, call outcomes, notes, history, and exports. It also exposes a Mini App API over HTTP. That means the main security questions are:
+The project handles customer data, call outcomes, notes, history, and exports. It also exposes a Mini App API over HTTP. The main security questions are:
 
 - who can access the Mini App API,
 - who can trigger admin-only actions,
@@ -18,8 +18,9 @@ The project handles customer data, call outcomes, notes, history, and exports. I
 - Telegram Mini App authentication exists and uses `initData` validation.
 - Admin authorization is shared through `security.py`.
 - Export actions are admin-gated.
-- The Mini App auth path is intended to be mandatory on real endpoints by default.
-- There is a development-only anonymous escape hatch for local browser testing.
+- The Mini App auth path is mandatory on real API endpoints by default.
+- `Authorization: tma <initData>` is the current request format for authenticated Mini App calls.
+- `MINI_APP_ALLOW_ANONYMOUS=1` is a development-only escape hatch for local browser testing.
 
 ## Open security items
 
@@ -41,6 +42,7 @@ The project handles customer data, call outcomes, notes, history, and exports. I
 - If a second permission tier is needed, add it deliberately instead of overloading the current admin allowlist.
 - If denied admin attempts become important operationally, add explicit audit logging rather than assuming the current success-only log is enough.
 - If the Mini App origin becomes stable, tighten CORS to that origin instead of leaving it as `*`.
+- This file is a security snapshot, not an instruction file; use `AGENTS.md` for workflow rules.
 
 ## Relationship to other docs
 
