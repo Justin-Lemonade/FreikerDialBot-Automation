@@ -274,9 +274,14 @@ this pass surfaced:
    going through `Database` methods for everything — noted as a design
    observation in the Architecture Review, not a defect; revisit only
    if it starts causing real confusion, not preemptively.
-7. Customer call-history/notes are captured in `customer_events` but not
-   yet queryable or exposed to either frontend (see Customer Model
-   Review) — the clearest "cheap win" for a future pass.
+7. ~~Customer call-history/notes are captured in `customer_events` but
+   not yet queryable or exposed to either frontend~~ — **correction
+   (2026-08-05 pass): already done, doc was stale.** `Database.get_customer_record()`
+   already assembles notes + full event history (via `get_customer_events()`)
+   into the shared payload both frontends use, and `frontend/src/pages/CustomerDetail.tsx`
+   already renders both (`record.notes`, `record.history`, confirmed by
+   direct grep, not assumed). No action needed — removing this from the
+   list rather than leaving a false gap on the record.
 8. `test_import_pipeline.py`'s one pre-existing, unrelated failure
    (confirmed against the original codebase in an earlier pass) is
    still present and still untouched.
@@ -287,12 +292,13 @@ this pass surfaced:
 
 In rough priority order:
 
-1. **Expose customer call history.** Add
-   `Database.get_customer_events(customer_id)` and surface it in both
-   `queue_ui.render_customer` (Telegram) and `_customer_payload` (Mini
-   App). Directly serves goal #1 ("operator should never need to
-   remember anything") and the data already exists — this is the
-   highest value-to-effort item on the list.
+1. ~~**Expose customer call history.**~~ Done — correcting a stale
+   claim here too (2026-08-05 pass). `get_customer_record()` already
+   includes it, and both frontends already render it:
+   `customer_ui.py`'s "More Info" view (capped at 8 events + an
+   "...and N more" overflow line) and `frontend/src/pages/CustomerDetail.tsx`
+   (`record.history`) — confirmed by direct grep on both files, not
+   assumed from the shared payload existing.
 2. ~~Decide the anonymous-access cutover.~~ Done 2026-08-05 — auth is
    mandatory by default now. CORS is the one piece of this that's still
    open (tighten once the real Mini App origin is stable).

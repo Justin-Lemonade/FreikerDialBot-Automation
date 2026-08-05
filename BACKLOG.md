@@ -241,4 +241,12 @@ reasoning.
     confirmed. Flagging the discrepancy rather than quietly relabeling it
     "fixed." Worth re-checking if it resurfaces.
 17. `test_admin_commands.py` has a pre-existing unused `import sqlite3`.
+18. Of `database.py`'s 24 `async_*` wrapper methods, most have real
+    callers, but `async_get_customer_events`, `async_update_customer_fields`,
+    and `async_insert_customers` currently don't (checked by grepping
+    every non-test call site, not just their own definitions). Not
+    calling this dead code the way `async_update_queue_session` was
+    (already removed) — the facade itself is a real, used pattern, these
+    three specific methods just aren't wired to a caller yet. Low
+    priority; worth a look next time someone's already in this file.
     Cosmetic, not introduced by any of this work.
