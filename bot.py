@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import sys
-import time
-import os
-import sys
-import json
-import subprocess
-import threading
-import urllib.request
-import urllib.error
-from pathlib import Path
 import atexit
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
 
 from telegram import Bot, BotCommand, MenuButtonCommands, MenuButtonWebApp, WebAppInfo
 from telegram.error import InvalidToken, NetworkError
@@ -322,7 +320,7 @@ def main() -> None:
     # when start_mini_app.py's own standalone mode is already managing
     # this as a subprocess and would otherwise double-launch it).
     mini_app_procs: list = []
-    skip_mini_app = "--no-mini_app" in sys.argv or os.environ.get("DISABLE_MINI_APP") == "1"
+    skip_mini_app = "--no-mini-app" in sys.argv or os.environ.get("DISABLE_MINI_APP") == "1"
     if not skip_mini_app:
         try:
             from start_mini_app import launch_mini_app_stack
@@ -344,7 +342,7 @@ def main() -> None:
         except Exception:
             log.exception("Mini App stack failed to start unexpectedly -- continuing with bot only")
     else:
-        log.info("Skipping Mini App stack (--no-mini_app or DISABLE_MINI_APP=1)")
+        log.info("Skipping Mini App stack (--no-mini-app or DISABLE_MINI_APP=1)")
 
     def _cleanup_mini_app_procs() -> None:
         for proc in mini_app_procs:
@@ -385,4 +383,8 @@ def main() -> None:
                 time.sleep(delay)
     finally:
         _cleanup_mini_app_procs()
+
+
+if __name__ == "__main__":
+    main()
 
