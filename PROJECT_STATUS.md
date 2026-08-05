@@ -15,21 +15,22 @@ For user-facing overview and setup, read `README.md`.
 - The queue supports deterministic next-customer selection, editing, blacklists, search, history, and admin actions.
 - The Mini App frontend is a real React/TypeScript/Vite app, not a stub.
 - Telegram Mini App authentication and admin authorization logic are implemented in the repo.
-- The repository docs are now centered on `AGENTS.md`, `PROJECT_STATUS.md`, `ARCHITECTURE.md`, `SECURITY_AUDIT_REPORT.md`, and `README.md`.
+- The repository docs are centered on `AGENTS.md`, `PROJECT_STATUS.md`, `ARCHITECTURE.md`, `SECURITY_AUDIT_REPORT.md`, and `README.md`.
 
 ## What was folded into this file from older docs
 
 - The old backlog file is now represented here as the open-issues list below.
 - The old setup-after-Claude notes are now represented here as the security/setup recap below.
-- The old delegation/task notes were not needed once the priority pass was completed, so they were removed instead of being kept as another parallel Markdown file.
+- The old delegation/task notes were removed instead of being kept as another parallel Markdown file.
 
 ## Security and setup recap
 
-- The data-history remediation pass was completed earlier and should stay treated as a completed decision, not a live task.
+- The data-history remediation decision is already completed and should stay treated as a completed decision, not a live task.
 - Mini App auth is mandatory by default on real endpoints.
 - `bot.py` is the single entry point for the stack when the Mini App is enabled.
 - The launcher flag typo was fixed in the earlier setup pass.
 - The dependabot configuration exists and should stay on the repo maintenance path.
+- The Mini App API is still the thin adapter around the shared backend services, not a separate backend.
 
 ## What is currently open
 
