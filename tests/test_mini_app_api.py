@@ -765,7 +765,7 @@ def test_customer_payload_skips_blacklisted_phone(api_server):
     service.database.blacklist_phone("+15550009991")
 
     # Get the customer payload via the API
-    status, session = _request_json(server, "/session/current")
+    status, session = _request_json(server, "/session/current", service=service)
     assert status == 200
     customer = session["currentCustomer"]
     assert customer is not None
