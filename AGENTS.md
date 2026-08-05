@@ -9,17 +9,31 @@ Keep the repository documentation to these files:
 - `AGENTS.md` — rules and working conventions for agents.
 - `PROJECT_STATUS.md` — current snapshot, open issues, decisions, and recaps of completed passes.
 - `ARCHITECTURE.md` — technical architecture and Mini App API contract.
-- `SECURITY_AUDIT_REPORT.md` — security findings, current posture, and security checks.
+- `SECURITY_AUDIT_REPORT.md` — security findings and current security posture.
 - `README.md` — user-facing overview and setup.
 
 Do not add other Markdown files unless you are replacing one of the files above or a tool explicitly requires a separate filename.
-
 Do not recreate legacy note files such as `BACKLOG.md`, `DELEGATION_TASKS.md`, `GEMINI.md`, `MINI_APP_API.md`, or `SETUP_AFTER_CLAUDE.md`.
+
+## When code, uploads, or repo state change
+
+Whenever you review new code, a fresh repo push, or uploaded notes/files, first decide whether any canonical doc needs an update.
+
+Use this rule of thumb:
+
+- Update `AGENTS.md` if rules, workflow, validation, or doc-handling policy changes.
+- Update `PROJECT_STATUS.md` if current state, open issues, next steps, or owner decisions change.
+- Update `ARCHITECTURE.md` if module boundaries, API routes, auth, or ownership change.
+- Update `SECURITY_AUDIT_REPORT.md` if the security posture, exposure surface, or audit findings change.
+- Update `README.md` if setup, usage, or the user-facing overview changes.
+
+Before creating a new Markdown file, first try folding the material into one of the canonical docs. Create a new file only if a tool or durable separation really requires it.
+Treat `SECURITY_AUDIT_REPORT.md` as a security snapshot, not as an instruction file. Use it when working on security; otherwise prefer `AGENTS.md` and `PROJECT_STATUS.md`.
 
 ## Source of truth
 
 - GitHub repository contents are authoritative.
-- Verify live code before claiming a function, endpoint, or feature exists.
+- Verify live code before claiming a function, endpoint, file, or feature exists.
 - Documentation describes intent; code determines fact.
 
 ## Working rules
