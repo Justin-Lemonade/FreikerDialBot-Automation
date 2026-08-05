@@ -16,13 +16,13 @@ from logger import log
 from validation import load_json_array
 
 
-AI_PROMPT = """You are a precise, deterministic data-extraction engine. Never add commentary.
+# -----------------------------------------------------------------------
+# Shared field-schema and extraction rules — the single source of truth
+# for both AI_PROMPT and SYSTEM_PROMPT. If a field or rule changes, edit
+# it here rather than in two places.
+# -----------------------------------------------------------------------
 
-Extract every customer record from this CRM screenshot or text.
-
-Return ONLY a JSON array -- no code fences, no headings, no extra text. Response must start with '[' and end with ']'. If no customers are found, return exactly: []
-
-Each object must have EXACTLY these 9 keys, in this order:
+_FIELD_RULES = """Each object must have EXACTLY these 9 keys, in this order:
 - loan_number (string): account/loan ID exactly as shown, no reformatting.
 - first_name (string)
 - last_name (string)
@@ -31,9 +31,9 @@ Each object must have EXACTLY these 9 keys, in this order:
 - days_overdue (string): digits only. "" if not visible.
 - monthly_payment (string): the recurring monthly payment amount. Digits and decimal point only, strip "$" and commas. "" if not visible.
 - current_overdue_amount (string): the amount currently past due (distinct from days_overdue, which is a day count, not a currency amount). Digits and decimal point only, strip "$" and commas. "" if not visible.
-- original_loan_amount (string): the original principal the loan was issued for. Digits and decimal point only, strip "$" and commas. "" if not visible.
+- original_loan_amount (string): the original principal the loan was issued for. Digits and decimal point only, strip "$" and commas. "" if not visible."""
 
-RULES:
+_RULES_LISTING = """RULES:
 1. One object per customer. Never merge or split rows.
 2. Missing or illegible field -> "" (or [] for phone_numbers). Never use "N/A", "Unknown", or null.
 3. EXCLUDE a customer entirely (no object at all) if their name, phone number, or any field is marked with a "+" or "X" beside it, or is crossed out / struck through. This overrides rule 2 -- do not include them even partially.
@@ -42,10 +42,21 @@ RULES:
 6. If part of the source is cut off, blurry, or obscured, extract what you can read with confidence; never guess unclear characters, especially in loan_number or phone numbers.
 7. Masked or redacted data (e.g. "XXX-XX-1234") should be copied exactly as shown, not unmasked.
 8. Never add extra keys, never wrap the array in an object, never nest arrays.
-9. Do not confuse the four currency fields: balance is what's left to pay off the loan, monthly_payment is the recurring installment, current_overdue_amount is what's currently past due in dollars, original_loan_amount is the original principal. If only one dollar figure is visible on screen, put it in balance and leave the others "" -- never guess or copy one amount into multiple fields.
+9. Do not confuse the four currency fields: balance is what's left to pay off the loan, monthly_payment is the recurring installment, current_overdue_amount is what's currently past due in dollars, original_loan_amount is the original principal. If only one dollar figure is visible on screen, put it in balance and leave the others "" -- never guess or copy one amount into multiple fields."""
+
+
+AI_PROMPT = f"""You are a precise, deterministic data-extraction engine. Never add commentary.
+
+Extract every customer record from this CRM screenshot or text.
+
+Return ONLY a JSON array -- no code fences, no headings, no extra text. Response must start with '[' and end with ']'. If no customers are found, return exactly: []
+
+{_FIELD_RULES}
+
+{_RULES_LISTING}
 
 Example:
-[{"loan_number":"LN-48213","first_name":"Maria","last_name":"Gomez","phone_numbers":["+15551234567"],"balance":"1024.50","days_overdue":"32","monthly_payment":"150.00","current_overdue_amount":"300.00","original_loan_amount":"5000.00"}]"""
+[{{"loan_number":"LN-48213","first_name":"Maria","last_name":"Gomez","phone_numbers":["+15551234567"],"balance":"1024.50","days_overdue":"32","monthly_payment":"150.00","current_overdue_amount":"300.00","original_loan_amount":"5000.00"}}]"""
 
 
 SYSTEM_PROMPT = (
@@ -59,15 +70,7 @@ SYSTEM_PROMPT = (
     "- Never wrap the array in an object, never nest arrays.\n"
     "- No customers found -> return exactly: []\n\n"
     "SCHEMA (each object, exactly these 9 keys):\n"
-    "- loan_number: string\n"
-    "- first_name: string\n"
-    "- last_name: string\n"
-    "- phone_numbers: array of strings\n"
-    "- balance: string (remaining loan balance)\n"
-    "- days_overdue: string (a day count, not a currency amount)\n"
-    "- monthly_payment: string (recurring installment amount)\n"
-    "- current_overdue_amount: string (amount currently past due, in dollars)\n"
-    "- original_loan_amount: string (original principal)\n\n"
+    f"{_FIELD_RULES}\n\n"
     "DATA INTEGRITY RULES:\n"
     "- Never invent, infer, guess, or hallucinate a value not clearly present. Missing/illegible "
     "field -> \"\" (or [] for phone_numbers), never null/\"N/A\"/\"Unknown\".\n"
@@ -282,6 +285,11 @@ class AIParser:
         self.settings = settings
         self.client = AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
         self.router = LLMFailoverRouter(settings)
+        # When True, parse_text/parse_image use self.client directly
+        # (Responses API) instead of routing through self.router (Chat
+        # Completions). Intended for test fakes; production code always
+        # goes through the router regardless of self.client's type.
+        self.bypass_router = False
 
     async def parse_text(self, text: str) -> list[dict[str, Any]]:
         """Parse pasted JSON directly or send free-form text to OpenAI/Failover Router."""
@@ -296,8 +304,11 @@ class AIParser:
             customers = load_json_array(raw_json)
             return [_map_common_keys(customer) for customer in customers]
 
-        # Check if the client is mocked (not an instance of AsyncOpenAI)
-        if self.client and not isinstance(self.client, AsyncOpenAI):
+        # When bypass_router is set (e.g. by a test fake), call the
+        # client directly using the Responses API format. Production
+        # always goes through the failover router, regardless of what
+        # type self.client is.
+        if self.bypass_router:
             response = await self.client.responses.create(
                 model=self.settings.openai_model,
                 input=[
@@ -322,8 +333,10 @@ class AIParser:
         if not image_path.exists() or image_path.stat().st_size == 0:
             raise ParserError("The uploaded image could not be read.")
 
-        # Check if the client is mocked (not an instance of AsyncOpenAI)
-        if self.client and not isinstance(self.client, AsyncOpenAI):
+        # When bypass_router is set (e.g. by a test fake), call the
+        # client directly using the Responses API format. Production
+        # always goes through the failover router.
+        if self.bypass_router:
             image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
             mime = "image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
             response = await self.client.responses.create(

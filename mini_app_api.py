@@ -574,9 +574,12 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
         try:
             # Important: os.path.normpath is not enough, as it doesn't
             # prevent '..' segments from backing out of the root.
-            # Path.resolve() is the correct tool here.
+            # Path.resolve() + is_relative_to() is the correct tool here
+            # -- a string-prefix check would be fooled by a sibling
+            # directory whose name happens to start with the static dir's
+            # path (e.g. /static-evil/...).
             filepath = (static_dir / path.lstrip("/")).resolve()
-            if not str(filepath).startswith(str(static_dir.resolve())):
+            if not filepath.is_relative_to(static_dir.resolve()):
                 return False  # Forbidden
         except Exception:
             return False  # Bad request or other error

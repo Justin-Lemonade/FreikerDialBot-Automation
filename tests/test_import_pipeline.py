@@ -97,6 +97,7 @@ class FakeOpenAIClient:
 def make_ai_parser(scripted_output: str) -> AIParser:
     parser = AIParser(Settings(telegram_bot_token="x", openai_api_key="fake-key-for-tests"))
     parser.client = FakeOpenAIClient(scripted_output)
+    parser.bypass_router = True
     return parser
 
 
@@ -845,6 +846,7 @@ class TestExtendedFinancialFieldImport:
             "Monthly Payment": "300.00", "Current Overdue Amount": "150.00",
             "Original Loan Amount": "8000.00",
         }]))
+        parser.bypass_router = True
         customers = await parser.parse_text("some free text")
         assert customers[0]["monthly_payment"] == "300.00"
         assert customers[0]["current_overdue_amount"] == "150.00"

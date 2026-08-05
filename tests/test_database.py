@@ -280,6 +280,40 @@ class TestExtendedFinancialFields:
         assert db.get_customer(1)["primary_phone"] == ""
 
 
+class TestUpdateQueueSession:
+    """update_queue_session must whitelist the fields it writes, mirroring
+    update_customer_fields -- queue_session is internal queue state and
+    callers must not be able to write arbitrary columns."""
+
+    def test_update_known_fields(self, database):
+        database.update_queue_session(is_paused=1, current_position=3)
+        session = database.get_queue_session()
+        assert session["is_paused"] == 1
+        assert session["current_position"] == 3
+
+    def test_rejects_unknown_field(self, database):
+        with pytest.raises(ValueError, match="hacked_field"):
+            database.update_queue_session(hacked_field="boom")
+
+    def test_no_fields_is_a_safe_no_op(self, database):
+        before = database.get_queue_session()
+        database.update_queue_session()
+        after = database.get_queue_session()
+        assert before == after
+
+    def test_updated_at_is_set_automatically(self, database):
+        database.update_queue_session(is_paused=1)
+        assert database.get_queue_session()["updated_at"] is not None
+
+
+class TestWalMode:
+    def test_connect_uses_wal_journal_mode(self, tmp_path):
+        db = Database(path=tmp_path / "wal.db")
+        with db.connect() as conn:
+            mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        assert mode == "wal"
+
+
 class TestLastEditedTimestamp:
     def test_starts_unset(self, database):
         assert database.get_customer(1)["last_edited_timestamp"] is None

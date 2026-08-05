@@ -139,6 +139,25 @@ class TestStaticFileServing:
             urllib.request.urlopen(req, timeout=5)
         assert exc_info.value.code == 404
 
+    def test_directory_traversal_is_rejected(self, api_server):
+        """Regression test for the static-path containment check: a '..'
+        segment must never serve a file outside the static dir. The old
+        string-prefix check was bypassable by sibling-directory prefix
+        collisions; Path.is_relative_to() resolves this properly."""
+        server, service = api_server
+        secret = service.backend.settings.mini_app_static_dir.parent / "secret.txt"
+        secret.write_text("TOP_SECRET")
+        port = server.server_address[1]
+
+        for path in (
+            "/../secret.txt",
+            "/%2e%2e/secret.txt",
+        ):
+            req = urllib.request.Request(f"http://127.0.0.1:{port}{path}")
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(req, timeout=5)
+            assert exc_info.value.code == 404, f"{path} must not serve files outside static dir"
+
 
 class TestBackendReuse:
     """MiniAppService must be built on top of backend.build_backend(),

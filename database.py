@@ -133,6 +133,13 @@ class Database:
     def connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
+        # WAL mode improves concurrent read/write behavior (the Mini App
+        # API and the bot can both hold the DB open), and a busy timeout
+        # prevents immediate "database is locked" errors when two
+        # connections contend. WAL is persistent per database file;
+        # busy_timeout is per-connection.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
     def initialize(self) -> None:
@@ -724,8 +731,29 @@ class Database:
             return dict(row)
 
     def update_queue_session(self, **fields: Any) -> None:
+        """Update the single queue_session row (id=1).
+
+        Deliberately whitelists the fields that may be written, mirroring
+        update_customer_fields -- queue_session is internal queue state,
+        and callers must not be able to write arbitrary columns (e.g. a
+        typo'd field name would otherwise silently create a new column
+        via the dynamic UPDATE). `updated_at` is always set automatically.
+        """
         if not fields:
             return
+        editable = {
+            "current_customer_id",
+            "current_position",
+            "session_start_time",
+            "is_paused",
+            "queue_message_chat_id",
+            "queue_message_id",
+            "updated_at",
+        }
+        unknown = set(fields) - editable
+        if unknown:
+            raise ValueError(f"Cannot update queue session field(s): {', '.join(sorted(unknown))}")
+
         fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         assignments = ", ".join(f"{key} = ?" for key in fields)
         values = list(fields.values())
@@ -831,9 +859,6 @@ class Database:
 
     async def async_get_queue_session(self):
         return await asyncio.to_thread(self.get_queue_session)
-
-    async def async_update_queue_session(self, **fields):
-        await asyncio.to_thread(self.update_queue_session, **fields)
 
     async def async_search_customers(self, query, limit=20):
         return await asyncio.to_thread(self.search_customers, query, limit)
