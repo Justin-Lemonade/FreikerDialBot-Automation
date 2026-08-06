@@ -175,4 +175,9 @@ export const api = {
       blacklisted,
       reason,
     }),
+
+  getSettings: () => get<import('../types').AppSettings>('/settings'),
+
+  updateSettings: (fields: Partial<import('../types').AppSettings>) =>
+    post<{ ok: boolean; settings?: import('../types').AppSettings; error?: string }>('/settings', fields),
 };

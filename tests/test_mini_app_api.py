@@ -223,6 +223,90 @@ def test_call_back_requeues_did_not_answer_customers(api_server):
     assert service.database.status_counts()["waiting"] == 1
 
 
+def test_settings_endpoint_defaults_to_unlimited_and_auto_advance_on(api_server):
+    """No setting has ever been written -- must report the same defaults
+    the app has always behaved as (unlimited attempts, auto-advance on),
+    not None/undefined."""
+    server, service = api_server
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings == {"maxCallAttempts": None, "autoAdvance": True}
+
+
+def test_settings_endpoint_persists_max_call_attempts(api_server):
+    server, service = api_server
+    status, result = _request_json(
+        server, "/settings", method="POST", payload={"maxCallAttempts": 2}, service=service
+    )
+    assert status == 200
+    assert result == {"ok": True, "settings": {"maxCallAttempts": 2, "autoAdvance": True}}
+
+    # Persists across a fresh read, not just the response echo.
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["maxCallAttempts"] == 2
+
+
+def test_settings_endpoint_rejects_invalid_max_call_attempts(api_server):
+    server, service = api_server
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(server, "/settings", method="POST", payload={"maxCallAttempts": 0}, service=service)
+    assert exc_info.value.code == 400
+
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(
+            server, "/settings", method="POST", payload={"maxCallAttempts": "not-a-number"}, service=service
+        )
+    assert exc_info.value.code == 400
+
+
+def test_settings_endpoint_can_set_unlimited_again(api_server):
+    server, service = api_server
+    _request_json(server, "/settings", method="POST", payload={"maxCallAttempts": 1}, service=service)
+    status, result = _request_json(
+        server, "/settings", method="POST", payload={"maxCallAttempts": None}, service=service
+    )
+    assert status == 200
+    assert result["settings"]["maxCallAttempts"] is None
+
+
+def test_call_back_respects_max_call_attempts_limit(api_server):
+    """Core enforcement: once a customer's attempt_count reaches the
+    configured cap, "Call Back" must stop requeuing them -- they stay
+    call_later (exhausted) instead of cycling forever."""
+    server, service = api_server
+    service.database.insert_customers(
+        [{"loan_number": "attempt-cap-1", "first_name": "Max", "last_name": "Attempts",
+          "phone_numbers": ["+15550000099"], "balance": "10", "days_overdue": "1"}]
+    )
+    _request_json(server, "/settings", method="POST", payload={"maxCallAttempts": 2}, service=service)
+
+    def mark_did_not_answer():
+        _, current = _request_json(server, "/customer/current", service=service)
+        _request_json(
+            server, "/call/result", method="POST",
+            payload={"customerId": current["id"], "outcome": "did_not_answer"},
+            service=service,
+        )
+
+    # Attempt 1: call_later, then requeued by Call Back (1 < 2).
+    mark_did_not_answer()
+    assert service.database.status_counts()["call_later"] == 1
+    status, _ = _request_json(server, "/queue/call-back", method="POST", service=service)
+    assert status == 200
+    assert service.database.status_counts()["waiting"] == 1
+    assert service.database.status_counts()["call_later"] == 0
+
+    # Attempt 2 reaches the cap (attempt_count == 2 == max): Call Back
+    # must NOT requeue this customer again.
+    mark_did_not_answer()
+    assert service.database.status_counts()["call_later"] == 1
+    status, _ = _request_json(server, "/queue/call-back", method="POST", service=service)
+    assert status == 200
+    assert service.database.status_counts()["call_later"] == 1
+    assert service.database.status_counts()["waiting"] == 0
+
+
 def test_export_requires_admin_authorization(authenticated_api_server):
     """SECURITY regression test: anonymous requests (401, no credentials
     at all -- caught by the general auth gate before /export's own admin

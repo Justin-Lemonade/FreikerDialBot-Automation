@@ -14,6 +14,11 @@ interface Props {
   onOutcome: (outcome: string) => void;
   onOpenNotes: () => void;
   onOpenUpload: () => void;
+  /** True when Auto Advance (Settings) is off and an outcome has just
+   * been recorded -- the card below is frozen on the just-completed
+   * customer until onAdvanceNextCustomer is tapped. */
+  hasPendingAdvance?: boolean;
+  onAdvanceNextCustomer?: () => void;
 }
 
 const CARD_EXIT_ANIMATION_MS = 380;
@@ -26,7 +31,19 @@ const CARD_EXIT_ANIMATION_MS = 380;
  * uploading). When there's no active queue, this shows the
  * upload/welcome state instead (image 2's "Welcome Back" reference).
  */
-export const Home = ({ session, customer, outcome, isSubmitting, durationLabel, onStartCall, onOutcome, onOpenNotes, onOpenUpload }: Props) => {
+export const Home = ({
+  session,
+  customer,
+  outcome,
+  isSubmitting,
+  durationLabel,
+  onStartCall,
+  onOutcome,
+  onOpenNotes,
+  onOpenUpload,
+  hasPendingAdvance,
+  onAdvanceNextCustomer,
+}: Props) => {
   const [isLeaving, setIsLeaving] = useState(false);
   const hasQueue = Boolean(session?.customerCount);
 
@@ -72,25 +89,41 @@ export const Home = ({ session, customer, outcome, isSubmitting, durationLabel, 
     <div className="space-y-4">
       <CustomerCard key={customer?.id ?? 'none'} customer={customer} isLeaving={isLeaving} />
 
-      <CallButton label="📞 CALL CUSTOMER" onClick={onStartCall} disabled={!customer} />
-
-      <OutcomeButtons onOutcome={handleOutcomeClick} disabled={isSubmitting || isLeaving || !customer} />
-
-      <div className="grid grid-cols-2 gap-3">
+      {hasPendingAdvance ? (
+        // Auto Advance is off: the outcome above was already recorded
+        // and the backend already has the real next customer queued up
+        // (see App.tsx's pendingAdvance) -- this button just reveals it,
+        // it does not trigger any new backend write.
         <button
-          onClick={onOpenNotes}
-          className="retro-button min-h-[48px] font-display text-[9px]"
-          style={{ border: '1px solid var(--border-frame)', color: 'var(--accent-green)' }}
+          onClick={onAdvanceNextCustomer}
+          className="retro-button min-h-[56px] w-full font-display text-sm"
+          style={{ background: 'var(--accent-blue)', color: 'var(--accent-blue-text)', border: '2px solid var(--accent-blue)' }}
         >
-          NOTE
+          NEXT CUSTOMER →
         </button>
-        <div
-          className="flex min-h-[48px] items-center justify-center font-data text-base"
-          style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
-        >
-          {outcome ? 'Call finished' : durationLabel}
-        </div>
-      </div>
+      ) : (
+        <>
+          <CallButton label="📞 CALL CUSTOMER" onClick={onStartCall} disabled={!customer} />
+
+          <OutcomeButtons onOutcome={handleOutcomeClick} disabled={isSubmitting || isLeaving || !customer} />
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={onOpenNotes}
+              className="retro-button min-h-[48px] font-display text-[9px]"
+              style={{ border: '1px solid var(--border-frame)', color: 'var(--accent-green)' }}
+            >
+              NOTE
+            </button>
+            <div
+              className="flex min-h-[48px] items-center justify-center font-data text-base"
+              style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
+            >
+              {outcome ? 'Call finished' : durationLabel}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

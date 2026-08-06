@@ -101,6 +101,68 @@ def test_status_updates(database):
     assert customer["status_timestamp"]
 
 
+def test_apply_action_call_later_increments_attempt_count(database):
+    """The single write path for Didn't Answer must count the attempt --
+    this is what Settings > Max Call Attempts enforces against."""
+    queue = QueueEngine(database)
+    first = queue.resume()
+    customer_id = first.customer["id"]
+
+    queue.apply_action(customer_id, "call_later")
+    assert database.get_customer(customer_id)["attempt_count"] == 1
+
+
+def test_apply_action_other_outcomes_do_not_increment_attempt_count(database):
+    """Only call_later (Didn't Answer) counts as an attempt -- Contacted,
+    Skip, and Wrong Number are terminal outcomes, not a failed attempt."""
+    queue = QueueEngine(database)
+    first = queue.resume()
+    customer_id = first.customer["id"]
+
+    queue.apply_action(customer_id, "warned")
+    assert database.get_customer(customer_id)["attempt_count"] == 0
+
+
+def test_get_max_call_attempts_defaults_to_unlimited(database):
+    queue = QueueEngine(database)
+    assert queue.get_max_call_attempts() is None
+
+
+def test_get_max_call_attempts_reads_configured_value(database):
+    queue = QueueEngine(database)
+    database.set_setting("max_call_attempts", "3")
+    assert queue.get_max_call_attempts() == 3
+
+
+def test_restart_call_later_excludes_customers_at_the_attempt_cap(database):
+    """Core enforcement: restart_call_later() ("Call Back") must not
+    requeue a customer who has already reached Max Call Attempts --
+    they stay call_later (exhausted) instead of cycling forever."""
+    queue = QueueEngine(database)
+    database.set_setting("max_call_attempts", "1")
+
+    first = queue.resume()
+    exhausted_id = first.customer["id"]
+    queue.apply_action(exhausted_id, "call_later")  # attempt_count -> 1, hits the cap
+
+    queue.restart_call_later()
+
+    assert database.get_customer(exhausted_id)["status"] == "call_later"
+
+
+def test_restart_call_later_requeues_customers_under_the_attempt_cap(database):
+    queue = QueueEngine(database)
+    database.set_setting("max_call_attempts", "3")
+
+    first = queue.resume()
+    customer_id = first.customer["id"]
+    queue.apply_action(customer_id, "call_later")  # attempt_count -> 1, still under cap 3
+
+    queue.restart_call_later()
+
+    assert database.get_customer(customer_id)["status"] == "waiting"
+
+
 def test_resume_after_restart_uses_database_state(database):
     queue = QueueEngine(database)
     first = queue.resume()

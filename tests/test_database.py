@@ -335,3 +335,63 @@ class TestLastEditedTimestamp:
         assert after_edit["last_edited_timestamp"] is not None
         # The call outcome timestamp is untouched by an unrelated edit.
         assert after_edit["status_timestamp"] == after_call["status_timestamp"]
+
+
+class TestAttemptCount:
+    def test_starts_at_zero(self, database):
+        assert database.get_customer(1)["attempt_count"] == 0
+
+    def test_increment_returns_new_count(self, database):
+        assert database.increment_attempt_count(1) == 1
+        assert database.increment_attempt_count(1) == 2
+        assert database.get_customer(1)["attempt_count"] == 2
+
+    def test_increment_only_affects_the_target_customer(self, database):
+        database.increment_attempt_count(1)
+        assert database.get_customer(2)["attempt_count"] == 0
+
+
+class TestAppSettings:
+    def test_get_setting_returns_default_when_unset(self, database):
+        assert database.get_setting("max_call_attempts") is None
+        assert database.get_setting("max_call_attempts", "unlimited") == "unlimited"
+
+    def test_set_then_get_round_trips(self, database):
+        database.set_setting("max_call_attempts", "3")
+        assert database.get_setting("max_call_attempts") == "3"
+
+    def test_set_overwrites_existing_value(self, database):
+        database.set_setting("max_call_attempts", "3")
+        database.set_setting("max_call_attempts", "1")
+        assert database.get_setting("max_call_attempts") == "1"
+
+    def test_get_settings_returns_a_dict_with_missing_keys_as_none(self, database):
+        database.set_setting("auto_advance", "0")
+        result = database.get_settings(["max_call_attempts", "auto_advance"])
+        assert result == {"max_call_attempts": None, "auto_advance": "0"}
+
+
+class TestReassignStatusWithAttemptLimit:
+    def test_max_attempts_none_requeues_everyone(self, database):
+        database.update_customer_status(1, "call_later")
+        database.increment_attempt_count(1)
+        database.increment_attempt_count(1)
+        database.increment_attempt_count(1)
+        moved = database.reassign_status("call_later", "waiting", max_attempts=None)
+        assert moved == 1
+        assert database.get_customer(1)["status"] == "waiting"
+
+    def test_max_attempts_excludes_customers_at_or_over_the_cap(self, database):
+        database.update_customer_status(1, "call_later")
+        database.increment_attempt_count(1)
+        database.increment_attempt_count(1)  # attempt_count == 2
+        moved = database.reassign_status("call_later", "waiting", max_attempts=2)
+        assert moved == 0
+        assert database.get_customer(1)["status"] == "call_later"
+
+    def test_max_attempts_includes_customers_under_the_cap(self, database):
+        database.update_customer_status(1, "call_later")
+        database.increment_attempt_count(1)  # attempt_count == 1
+        moved = database.reassign_status("call_later", "waiting", max_attempts=2)
+        assert moved == 1
+        assert database.get_customer(1)["status"] == "waiting"

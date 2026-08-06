@@ -252,6 +252,43 @@ class MiniAppService:
             return "0%"
         return f"{round((contacted / total) * 100)}%"
 
+    def get_settings(self) -> dict[str, Any]:
+        """Returns the currently-real, backend-enforced Settings values.
+
+        Deliberately small: only settings that actually change backend
+        behavior belong here (Max Call Attempts is enforced by
+        QueueEngine.restart_call_later; Auto Advance is read by the
+        frontend to decide whether to move to the next customer
+        automatically after an outcome). Anything not listed here is
+        still a UI placeholder per Settings.tsx and must not be faked.
+        """
+        raw = self.database.get_settings(["max_call_attempts", "auto_advance"])
+        max_attempts_raw = raw.get("max_call_attempts")
+        return {
+            "maxCallAttempts": None if max_attempts_raw in (None, "unlimited") else int(max_attempts_raw),
+            # Defaults to True: this matches the app's existing behavior
+            # (App.tsx has always shown the next customer immediately)
+            # for anyone who has never touched the setting.
+            "autoAdvance": raw.get("auto_advance") != "0",
+        }
+
+    def update_settings(self, fields: dict[str, Any]) -> dict[str, Any]:
+        if "maxCallAttempts" in fields:
+            value = fields["maxCallAttempts"]
+            if value is None:
+                self.database.set_setting("max_call_attempts", "unlimited")
+            else:
+                try:
+                    parsed = int(value)
+                except (TypeError, ValueError):
+                    return {"ok": False, "error": "maxCallAttempts must be an integer or null"}
+                if parsed < 1:
+                    return {"ok": False, "error": "maxCallAttempts must be at least 1"}
+                self.database.set_setting("max_call_attempts", str(parsed))
+        if "autoAdvance" in fields:
+            self.database.set_setting("auto_advance", "1" if fields["autoAdvance"] else "0")
+        return {"ok": True, "settings": self.get_settings()}
+
     def pause_queue(self, telegram_user_id: int | None = None) -> dict[str, Any]:
         self.queue_engine.pause(telegram_user_id=telegram_user_id)
         return {"ok": True, "paused": True}
@@ -408,6 +445,7 @@ _API_PATHS = frozenset({
     "/customer/edit",
     "/customer/blacklist",
     "/phone/blacklist",
+    "/settings",
     "/export",
 })
 
@@ -591,6 +629,14 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
                     str(phone), blacklisted, reason=reason, telegram_user_id=telegram_user_id
                 ),
             )
+            return True
+        if path == "/settings" and method == "GET":
+            self._json(200, self.service.get_settings())
+            return True
+        if path == "/settings" and method == "POST":
+            payload = self._parse_json(body)
+            result = self.service.update_settings(payload)
+            self._json(200 if result.get("ok") else 400, result)
             return True
         if path == "/export" and method == "GET":
             if not security.is_admin(telegram_user_id, self.service.settings):

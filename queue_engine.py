@@ -24,6 +24,13 @@ QUEUE_STATUSES = {
 
 ActionStatus = Literal["warned", "call_later", "skip", "invalid_number"]
 
+# app_settings key for the Settings > Calling Behavior > Max Call
+# Attempts value. Stored as a string: "1".."4", or "unlimited". Missing
+# key (never configured) also means unlimited -- this preserves the
+# pre-existing behavior (every call_later customer is always requeued)
+# for anyone who hasn't touched the setting yet.
+MAX_CALL_ATTEMPTS_KEY = "max_call_attempts"
+
 
 @dataclass(frozen=True)
 class QueueProgress:
@@ -184,6 +191,10 @@ class QueueEngine:
             return self.next_customer()
 
         self.database.update_customer_status(customer_id, status)
+        if status == "call_later":
+            # Count this attempt. Enforcement happens later, in
+            # restart_call_later() -- see get_max_call_attempts().
+            self.database.increment_attempt_count(customer_id)
         event_type = {
             "warned": "customer_warned",
             "call_later": "customer_call_later",
@@ -214,13 +225,33 @@ class QueueEngine:
             self.database.delete_customer(customer_id)
         return self.next_customer()
 
+    def get_max_call_attempts(self) -> int | None:
+        """Reads the Max Call Attempts setting. Returns None for
+        unlimited (the default -- unset, or explicitly "unlimited"), or
+        an int for a configured cap (1-4 per the Settings spec, though
+        any positive int is accepted)."""
+        raw = self.database.get_setting(MAX_CALL_ATTEMPTS_KEY)
+        if raw is None or raw == "unlimited":
+            return None
+        try:
+            value = int(raw)
+        except ValueError:
+            return None
+        return value if value > 0 else None
+
     def restart_call_later(self, telegram_user_id: int | None = None) -> QueueSelection:
         """Requeue every 'call_later' customer back to 'waiting' and resume.
 
         Powers the "Call Back" button shown when a session completes.
         Customers marked warned/skip/paid/invalid_number are untouched.
+
+        Customers who have already reached the configured Max Call
+        Attempts limit are treated as exhausted and are intentionally
+        left in call_later rather than requeued again -- see
+        get_max_call_attempts() and Database.reassign_status().
         """
-        requeued = self.database.reassign_status("call_later", "waiting")
+        max_attempts = self.get_max_call_attempts()
+        requeued = self.database.reassign_status("call_later", "waiting", max_attempts=max_attempts)
         if requeued:
             self._record_event(
                 "queue_call_back_started", telegram_user_id=telegram_user_id

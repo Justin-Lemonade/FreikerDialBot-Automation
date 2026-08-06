@@ -104,6 +104,15 @@ export interface StatisticsPayload {
   bestDay: string;
 }
 
+/** Mirrors MiniAppService.get_settings()/update_settings() exactly.
+ * Deliberately small: only settings that actually change backend
+ * behavior belong here. Everything else in Settings.tsx stays a
+ * disabled "Coming soon" placeholder until it's real. */
+export interface AppSettings {
+  maxCallAttempts: number | null;
+  autoAdvance: boolean;
+}
+
 /** Telegram WebApp bridge -- only the subset of the real SDK this app
  * actually uses. See https://core.telegram.org/bots/webapps for the
  * full API surface if more is needed later. */

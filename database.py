@@ -93,6 +93,24 @@ CREATE TABLE IF NOT EXISTS blacklisted_phones (
 );
 """
 
+# Generic key/value store for operator-configurable, backend-enforced
+# preferences (Settings screen). Deliberately generic rather than one
+# column per setting: the Mini App master spec requires that "adding a
+# setting should ideally mean: define its type, default, control, and
+# persistence -- without restructuring the entire Settings page." A
+# single row is written per known setting key; unknown/legacy keys are
+# simply ignored by readers. Global (not per-operator) because the
+# underlying behaviors it controls (max attempts, auto-advance) apply to
+# the one shared queue every operator works from, not a personal
+# profile -- see ARCHITECTURE.md.
+APP_SETTINGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
 # Columns added via _migrate() rather than the base SCHEMA above, so
 # existing on-disk databases pick them up automatically without a manual
 # migration step. New financial fields (monthly_payment,
@@ -109,6 +127,14 @@ _CUSTOMER_MIGRATION_COLUMNS: dict[str, str] = {
     "current_overdue_amount": "TEXT",
     "original_loan_amount": "TEXT",
     "last_edited_timestamp": "TEXT",
+    # How many times this customer has been marked "call_later" (Didn't
+    # Answer). Backs the real Settings > Max Call Attempts feature --
+    # QueueEngine.apply_action increments this on every call_later
+    # outcome, and restart_call_later() ("Call Back") uses it to decide
+    # whether a customer is still eligible for another attempt. See
+    # ARCHITECTURE.md for why this replaced the old "just re-run
+    # call_later manually forever" behavior.
+    "attempt_count": "INTEGER NOT NULL DEFAULT 0",
 }
 
 # Every standard customer field beyond the original core five, used by
@@ -151,6 +177,7 @@ class Database:
             conn.execute(CUSTOMER_EVENTS_SCHEMA)
             conn.execute(DAILY_STATISTICS_SCHEMA)
             conn.execute(BLACKLISTED_PHONES_SCHEMA)
+            conn.execute(APP_SETTINGS_SCHEMA)
             # Performance indexes for high-cardinality / frequently filtered columns.
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_customers_status_import "
@@ -391,24 +418,91 @@ class Database:
             ).fetchall()
             return [self._customer_from_row(row) for row in rows]
 
-    def reassign_status(self, from_status: str, to_status: str) -> int:
+    def reassign_status(self, from_status: str, to_status: str, max_attempts: int | None = None) -> int:
         """Bulk-move every customer in from_status to to_status.
 
         Clears status_timestamp on affected rows (their status is changing
         again) and returns the number of rows affected. Used by the "Call
         Back" feature to requeue everyone marked call_later.
+
+        max_attempts, when given, excludes rows whose attempt_count has
+        already reached the configured Max Call Attempts limit -- those
+        customers are "exhausted" and stay in from_status rather than
+        being requeued again. None means unlimited (every row is
+        requeued), matching the setting's own "Unlimited" option.
         """
         with self.connect() as conn:
-            cursor = conn.execute(
-                """
-                UPDATE customers
-                SET status = ?, status_timestamp = NULL
-                WHERE status = ?
-                """,
-                (to_status, from_status),
-            )
+            if max_attempts is None:
+                cursor = conn.execute(
+                    """
+                    UPDATE customers
+                    SET status = ?, status_timestamp = NULL
+                    WHERE status = ?
+                    """,
+                    (to_status, from_status),
+                )
+            else:
+                cursor = conn.execute(
+                    """
+                    UPDATE customers
+                    SET status = ?, status_timestamp = NULL
+                    WHERE status = ? AND attempt_count < ?
+                    """,
+                    (to_status, from_status, max_attempts),
+                )
             conn.commit()
             return cursor.rowcount
+
+    def increment_attempt_count(self, customer_id: int) -> int:
+        """Increments and returns the customer's attempt_count. Called by
+        QueueEngine.apply_action exactly once per call_later ("Didn't
+        Answer") outcome -- the single write path both the Telegram bot
+        and the Mini App share, so attempts are counted identically
+        regardless of which frontend recorded the outcome."""
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE customers SET attempt_count = attempt_count + 1 WHERE id = ?",
+                (customer_id,),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT attempt_count FROM customers WHERE id = ?", (customer_id,)
+            ).fetchone()
+            return int(row["attempt_count"]) if row else 0
+
+    # -----------------------------------------------------------------------
+    # App settings -- generic key/value store for backend-enforced operator
+    # preferences (see APP_SETTINGS_SCHEMA docstring).
+    # -----------------------------------------------------------------------
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (key,)
+            ).fetchone()
+            return row["value"] if row else default
+
+    def get_settings(self, keys: list[str]) -> dict[str, str | None]:
+        with self.connect() as conn:
+            placeholders = ", ".join("?" for _ in keys)
+            rows = conn.execute(
+                f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})",
+                tuple(keys),
+            ).fetchall()
+            found = {row["key"]: row["value"] for row in rows}
+            return {key: found.get(key) for key in keys}
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO app_settings (key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                """,
+                (key, value, datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
 
     def get_customer(self, customer_id: int) -> dict[str, Any] | None:
         with self.connect() as conn:
@@ -804,6 +898,7 @@ class Database:
             "last_edited_timestamp": row["last_edited_timestamp"] if "last_edited_timestamp" in row_keys else None,
             "warning_note": row["warning_note"] if "warning_note" in row_keys else None,
             "is_blacklisted": bool(row["is_blacklisted"]) if "is_blacklisted" in row_keys else False,
+            "attempt_count": int(row["attempt_count"]) if "attempt_count" in row_keys and row["attempt_count"] is not None else 0,
         }
 
     # -----------------------------------------------------------------------

@@ -10,8 +10,16 @@ import { useSession } from './hooks/useSession';
 import { useCustomer } from './hooks/useCustomer';
 import { useTelegram } from './hooks/useTelegram';
 import { useCallTimer } from './hooks/useCallTimer';
+import { useAppSettings } from './hooks/useAppSettings';
 import { api, ApiError } from './api/client';
-import type { Screen } from './types';
+import type { Customer, Screen } from './types';
+
+/** Sentinel wrapper so "holding a pending customer whose value happens
+ * to be null" (queue about to complete) is distinguishable from "not
+ * holding anything" -- see the autoAdvance handling in handleOutcome. */
+interface PendingAdvance {
+  customer: Customer | null;
+}
 
 const App = () => {
   const [screen, setScreen] = useState<Screen>('home');
@@ -22,11 +30,13 @@ const App = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [pendingAdvance, setPendingAdvance] = useState<PendingAdvance | null>(null);
 
   const { session, loadState, error: sessionError, isStale, refreshSession, applySession } = useSession();
   const { customer, setFromSession } = useCustomer();
   const telegram = useTelegram();
   const timer = useCallTimer();
+  const { settings } = useAppSettings();
 
   // Poll every 5s so the progress bar / current customer stay live even
   // if the operator leaves the app idle on one screen -- the progress
@@ -39,10 +49,10 @@ const App = () => {
   }, [refreshSession]);
 
   useEffect(() => {
-    if (session?.currentCustomer) {
+    if (session?.currentCustomer && !pendingAdvance) {
       setFromSession(session.currentCustomer);
     }
-  }, [session, setFromSession]);
+  }, [session, setFromSession, pendingAdvance]);
 
   useEffect(() => {
     if (telegram.isReady) {
@@ -101,7 +111,17 @@ const App = () => {
         if (result.session) {
           applySession(result.session);
         }
-        setFromSession(result.nextCustomer ?? null);
+        // Auto Advance (Settings > Calling Behavior) gates whether the
+        // next customer's card replaces this one immediately, or waits
+        // for an explicit "Next Customer" tap -- see advanceToNextCustomer
+        // below and the pendingAdvance guard on the session-poll effect
+        // above. Either way this is the backend's own nextCustomer, not
+        // a client-side guess.
+        if (settings.autoAdvance) {
+          setFromSession(result.nextCustomer ?? null);
+        } else {
+          setPendingAdvance({ customer: result.nextCustomer ?? null });
+        }
         telegram.haptic('success');
         setIsSubmitting(false);
         setOutcome(null);
@@ -113,8 +133,18 @@ const App = () => {
         setOutcome(null);
       }
     },
-    [currentCustomer, isSubmitting, timer, applySession, setFromSession, telegram]
+    [currentCustomer, isSubmitting, timer, applySession, setFromSession, telegram, settings.autoAdvance]
   );
+
+  /** Applies a customer the backend already handed back in
+   * /call/result's response, held until now because Auto Advance is
+   * off. Nothing is re-fetched -- this is the same real nextCustomer,
+   * just displayed on a tap instead of automatically. */
+  const advanceToNextCustomer = useCallback(() => {
+    if (!pendingAdvance) return;
+    setFromSession(pendingAdvance.customer);
+    setPendingAdvance(null);
+  }, [pendingAdvance, setFromSession]);
 
   const handleSaveNote = useCallback(async () => {
     if (!currentCustomer || !noteDraft.trim()) return;
@@ -214,6 +244,8 @@ const App = () => {
         onStartCall={onStartCall}
         onOutcome={handleOutcome}
         onOpenNotes={() => setShowNotes(true)}
+        hasPendingAdvance={Boolean(pendingAdvance)}
+        onAdvanceNextCustomer={advanceToNextCustomer}
         onOpenUpload={() => {
           /* No-op: the Upload button is disabled (see Home.tsx) until a
              real Mini App import endpoint exists. */

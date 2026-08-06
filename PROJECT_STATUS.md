@@ -88,6 +88,14 @@ These need a product decision first, so they should stay out of the ready-to-del
 - `POST /queue/resume` is still not wired into the Mini App API even though the queue engine already has resume logic.
 - The Mini App still has no import flow of its own; importing remains Telegram-only.
 - Frontend test coverage is still sparse or absent compared with the backend tests.
+- Settings > Pre-ready Customers, Active Queue/New Contacts behavior, Language, Accent Color, and LLM provider preferences are still unimplemented placeholders in `Settings.tsx` (honestly disabled, not faked).
+
+## Recently completed
+
+- **Max Call Attempts** is now a real, backend-enforced setting rather than a placeholder: `customers.attempt_count` tracks how many times a customer has been marked "Didn't Answer" (`QueueEngine.apply_action`), and `QueueEngine.restart_call_later` ("Call Back") excludes customers who have reached the configured cap instead of requeuing them forever. Configured via `GET/POST /settings` (new generic `app_settings` key/value table -- see `database.py`), wired into `Settings.tsx` via `useAppSettings.ts`.
+- **Auto Advance** is now real: when off, completing an outcome no longer immediately swaps in the next customer -- the card stays frozen on the just-completed customer until the operator taps "Next Customer" (`App.tsx`'s `pendingAdvance` state). The backend already returned the next customer in the same response either way; this only changes when the frontend displays it.
+- Added 21 new backend tests covering both features at the database, `QueueEngine`, and `mini_app_api` layers. Full suite: 330 passed.
+- Frontend typecheck, lint, and build all pass with these changes.
 
 ## Decisions still needed
 
