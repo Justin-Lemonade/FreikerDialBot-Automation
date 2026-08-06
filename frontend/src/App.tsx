@@ -33,7 +33,7 @@ const App = () => {
   const [detailReturnScreen, setDetailReturnScreen] = useState<Screen>('search');
   const [pendingAdvance, setPendingAdvance] = useState<PendingAdvance | null>(null);
 
-  const { session, loadState, error: sessionError, isStale, refreshSession, applySession } = useSession();
+  const { session, loadState, error: sessionError, isStale, lastSyncedAt, refreshSession, applySession } = useSession();
   const { customer, setFromSession } = useCustomer();
   const telegram = useTelegram();
   const timer = useCallTimer();
@@ -285,6 +285,7 @@ const App = () => {
       onOpenSettings={() => setIsSettingsOpen(true)}
       onCloseSettings={() => setIsSettingsOpen(false)}
       isStale={isStale}
+      lastSyncedAt={lastSyncedAt}
       bannerError={actionError}
       onDismissError={() => setActionError(null)}
     >

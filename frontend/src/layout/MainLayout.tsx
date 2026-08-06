@@ -21,6 +21,7 @@ interface Props {
   onOpenSettings: () => void;
   onCloseSettings: () => void;
   isStale?: boolean;
+  lastSyncedAt?: number | null;
   bannerError?: string | null;
   onDismissError?: () => void;
 }
@@ -54,6 +55,7 @@ export const MainLayout = ({
   onOpenSettings,
   onCloseSettings,
   isStale,
+  lastSyncedAt,
   bannerError,
   onDismissError,
 }: Props) => {
@@ -148,7 +150,7 @@ export const MainLayout = ({
       </nav>
 
       <SettingsDrawer isOpen={isSettingsOpen} onClose={onCloseSettings}>
-        <Settings />
+        <Settings isStale={isStale} lastSyncedAt={lastSyncedAt} />
       </SettingsDrawer>
 
       {showNotes && (

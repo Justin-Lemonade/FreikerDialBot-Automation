@@ -1,19 +1,25 @@
 import type { ReactNode } from 'react';
 import { useAppSettings } from '../hooks/useAppSettings';
 
+interface Props {
+  isStale?: boolean;
+  lastSyncedAt?: number | null;
+}
+
 interface SettingRowProps {
   label: string;
   description: string;
   value: string;
+  valueColor?: string;
   disabled?: boolean;
 }
 
-const SettingRow = ({ label, description, value, disabled }: SettingRowProps) => (
+const SettingRow = ({ label, description, value, valueColor, disabled }: SettingRowProps) => (
   <div
-    className="flex items-center justify-between border-b py-3 last:border-b-0"
+    className="flex items-center justify-between gap-3 border-b py-3 last:border-b-0"
     style={{ borderColor: 'var(--border-frame)', opacity: disabled ? 0.45 : 1 }}
   >
-    <div>
+    <div className="min-w-0">
       <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
         {label}
       </p>
@@ -21,7 +27,10 @@ const SettingRow = ({ label, description, value, disabled }: SettingRowProps) =>
         {description}
       </p>
     </div>
-    <div className="font-display text-[9px]" style={{ color: disabled ? 'var(--text-dim)' : 'var(--accent-green)' }}>
+    <div
+      className="shrink-0 font-display text-[9px]"
+      style={{ color: valueColor ?? (disabled ? 'var(--text-dim)' : 'var(--accent-green)') }}
+    >
       {value}
     </div>
   </div>
@@ -111,6 +120,32 @@ const AutoAdvanceRow = () => {
   );
 };
 
+/** Real: reflects the actual last successful GET /session/current
+ * (useSession's lastSyncedAt) and whether the app is currently showing
+ * stale data (isStale) -- not a decorative "connected" dot. */
+const DiagnosticsSection = ({ isStale, lastSyncedAt }: Props) => {
+  const syncLabel = (() => {
+    if (!lastSyncedAt) return 'Not yet synced';
+    const seconds = Math.round((Date.now() - lastSyncedAt) / 1000);
+    if (seconds < 5) return 'Just now';
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.round(seconds / 60);
+    return `${minutes}m ago`;
+  })();
+
+  return (
+    <>
+      <SettingRow
+        label="Backend Connectivity"
+        description="Last request to the Mini App API"
+        value={isStale ? 'RECONNECTING' : 'CONNECTED'}
+        valueColor={isStale ? 'var(--accent-red)' : 'var(--accent-green)'}
+      />
+      <SettingRow label="Sync Status" description="Last successful session refresh" value={syncLabel} />
+    </>
+  );
+};
+
 interface SectionProps {
   title: string;
   children: ReactNode;
@@ -126,38 +161,73 @@ const Section = ({ title, children }: SectionProps) => (
 );
 
 /**
- * Framed, sectioned settings (brief: "boxed settings sections, strong
- * section separation"). Telegram Theme, Haptics, Max Call Attempts, and
- * Auto Advance are real, currently-functioning settings (see
- * useTelegram.ts and useAppSettings.ts). Everything else in the later
- * sections is intentionally not wired yet -- structural placeholders
- * per the brief's "design the layout so they can be added later without
- * reworking the whole screen," disabled and labeled "Coming soon"
- * rather than faked as working.
+ * Framed, sectioned settings, grouped per the UI pass 3 brief's
+ * category list. Real, backend-enforced or otherwise genuinely
+ * functioning settings: Telegram Theme and Haptics (useTelegram.ts --
+ * always on, since there's no toggle for either yet, but the row
+ * describes real current behavior, not a guess), Max Call Attempts and
+ * Auto Advance (useAppSettings.ts / GET/POST /settings), and Backend
+ * Connectivity / Sync Status (useSession.ts's isStale/lastSyncedAt).
+ *
+ * Everything else is an honest, disabled "Coming soon" placeholder --
+ * grouped into the right category now so adding the real control later
+ * doesn't require reworking the whole screen, per the brief's own
+ * instruction not to invent backend behavior to fill these in.
  */
-export const Settings = () => {
+export const Settings = ({ isStale, lastSyncedAt }: Props) => {
   return (
     <div className="space-y-3">
-      <Section title="APP">
-        <SettingRow label="Telegram Theme" description="Uses WebApp theme colors" value="ON" />
-        <SettingRow label="Haptics" description="Vibrations for key actions" value="ON" />
-      </Section>
-
       <Section title="CALLING BEHAVIOR">
         <MaxCallAttemptsRow />
         <AutoAdvanceRow />
         <SettingRow label="Call Delay" description="Pause between calls" value="-" disabled />
+        <SettingRow label="Next-Customer Hold" description="How long to hold before advancing" value="-" disabled />
+        <SettingRow label="Retry / Callback Behavior" description="Ordering when 'Call Back' requeues" value="-" disabled />
+      </Section>
+
+      <Section title="PHONE HANDLING">
+        <SettingRow label="Show Both Numbers" description="Always on -- see the call card" value="ON" />
+        <SettingRow label="Primary Phone Preference" description="Which number the Call button dials first" value="-" disabled />
+        <SettingRow label="Quick Number Switching" description="Swap primary number without More Info" value="-" disabled />
+        <SettingRow label="Tap-to-Dial" description="Always on for every number on file" value="ON" />
       </Section>
 
       <Section title="DISPLAY">
-        <SettingRow label="Density" description="Compact vs. detailed cards" value="-" disabled />
+        <SettingRow label="Compact vs Expanded Cards" description="Card density on Home" value="-" disabled />
         <SettingRow label="Visible Fields" description="Which data shows by default" value="-" disabled />
+        <SettingRow label="Progress Density" description="Progress bar detail level" value="-" disabled />
+        <SettingRow label="Notes Preview" description="Show latest note on the call card" value="-" disabled />
+        <SettingRow label="Show Balance / Overdue / Days" description="Which financial fields appear" value="-" disabled />
+      </Section>
+
+      <Section title="QUEUE">
+        <SettingRow label="Pre-ready Count" description="How many customers stay pre-fetched" value="-" disabled />
+        <SettingRow label="Active Queue vs New Contacts" description="Ordering between the two" value="-" disabled />
+        <SettingRow label="Resume / Restart Behavior" description="What happens on reopen" value="-" disabled />
+      </Section>
+
+      <Section title="SEARCH">
+        <SettingRow label="Highlight Matched Fields" description="Always on -- see Search results" value="ON" />
+        <SettingRow label="Keyboard-Safe Layout" description="Always on -- input stays reachable" value="ON" />
+        <SettingRow label="Default Search Fields" description="Which fields are searched by default" value="-" disabled />
+      </Section>
+
+      <Section title="APPEARANCE">
+        <SettingRow label="Telegram Theme" description="Uses WebApp theme colors" value="ON" />
+        <SettingRow label="Haptics" description="Vibrations for key actions" value="ON" />
+        <SettingRow label="Accent Color" description="Override the default green accent" value="-" disabled />
         <SettingRow label="Animation Intensity" description="Motion for transitions/glow" value="-" disabled />
       </Section>
 
-      <Section title="SEARCH & QUEUE">
-        <SettingRow label="Search Defaults" description="Default match fields" value="-" disabled />
-        <SettingRow label="Queue Behavior" description="Ordering and skip rules" value="-" disabled />
+      <Section title="LANGUAGE">
+        <SettingRow label="English" description="Current interface language" value="ACTIVE" />
+        <SettingRow label="Russian" description="Русский" value="-" disabled />
+        <SettingRow label="Tajik" description="Тоҷикӣ" value="-" disabled />
+      </Section>
+
+      <Section title="ADMIN / DIAGNOSTICS">
+        <DiagnosticsSection isStale={isStale} lastSyncedAt={lastSyncedAt} />
+        <SettingRow label="Version Info" description="Build/version identifier" value="-" disabled />
       </Section>
 
       <p className="text-center font-data text-sm" style={{ color: 'var(--text-dim)' }}>
