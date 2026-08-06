@@ -21,7 +21,7 @@ For user-facing overview and setup, read `README.md`.
 
 - The old backlog file is now represented here as the open-issues list below.
 - The old setup-after-Claude notes are now represented here as the security/setup recap below.
-- The old delegation/task notes were removed instead of being kept as another parallel Markdown file.
+- The old delegation/task notes were removed as a separate file and folded back into this file as a reusable delegation section.
 
 ## Security and setup recap
 
@@ -31,6 +31,55 @@ For user-facing overview and setup, read `README.md`.
 - The launcher flag typo was fixed in the earlier setup pass.
 - The dependabot configuration exists and should stay on the repo maintenance path.
 - The Mini App API is still the thin adapter around the shared backend services, not a separate backend.
+
+## Delegated work / ready-to-delegate tasks
+
+Use this section for bounded implementation specs that can be handed to a weaker model without losing context.
+
+What belongs here:
+- tasks with a clear scope and a clear stop condition;
+- work that can be verified with tests, builds, or a diff review;
+- implementation tasks that do not require a product decision first;
+- task specs that would otherwise get lost in a separate Markdown file.
+
+How to use it:
+- keep each item short and specific;
+- name the preferred model when delegation matters;
+- list the files that may change and the files that must not change;
+- state the exact outcome expected;
+- include the verification command or test that must pass;
+- move anything that needs product judgment, security judgment, or architectural redesign into `PROJECT_STATUS.md`'s decision or open-issues sections instead.
+
+### Ready to delegate
+
+#### 1. Restrict CORS to the real Mini App origin
+
+- Why: `Access-Control-Allow-Origin: *` is still wide open on Mini App responses.
+- Scope: `mini_app_api.py` only, plus focused tests.
+- Goal: use the resolved Mini App origin instead of `*` and keep local development workable.
+- Verification: add a test that asserts the header matches the configured origin and does not fall back to `*`.
+
+#### 2. Audit-log denied admin attempts
+
+- Why: successful admin actions are logged, but denied attempts are still invisible.
+- Scope: `admin_commands.py`, `mini_app_api.py`, and focused tests.
+- Goal: record an explicit denial event when admin access is rejected, without changing successful-action logging.
+- Verification: confirm both a rejected Telegram admin command and a rejected Mini App export create the denial record.
+
+#### 3. Add `POST /queue/resume` to the Mini App API
+
+- Why: `QueueEngine.resume()` already exists, but the Mini App has no route that exposes it.
+- Scope: `mini_app_api.py`, `frontend/` API call site(s), and tests.
+- Goal: expose queue resume as a real Mini App route and keep it under the same auth rules as the other real endpoints.
+- Verification: the route works when authenticated and returns 401 without auth.
+
+### Not delegated yet
+
+These need a product decision first, so they should stay out of the ready-to-delegate list until the rule is chosen deliberately.
+
+- **Paid write path:** decide whether it should exist in both Telegram and the Mini App, or remain disabled until the workflow is defined.
+- **Fully blacklisted customers:** decide whether queue eligibility should treat them as uncallable or leave the current behavior unchanged.
+- **Session timing:** decide whether to keep wall-clock timing or move to an idle-aware model.
 
 ## What is currently open
 
