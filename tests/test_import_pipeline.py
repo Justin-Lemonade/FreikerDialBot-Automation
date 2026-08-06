@@ -29,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ai_parser import AIParser, ParserError
+from ai_parser import AIParser, ParserError, Provider
 from config import Settings
 from database import Database
 from importer import Importer, ImporterError
@@ -67,37 +67,76 @@ def importer(database, session_manager):
 
 
 # ---------------------------------------------------------------------------
-# Fake OpenAI client -- lets AI-path tests run without a live API key
+# Fake provider client -- lets AI-path tests run without a live API key.
+# A fake provider is injected into the failover router (the same seam the
+# production code uses) instead of branching on a test-double flag.
 # ---------------------------------------------------------------------------
 
+
+class _FakeMessage:
+    def __init__(self, content: str):
+        self.content = content
+
+
+class _FakeChoice:
+    def __init__(self, content: str):
+        self.message = _FakeMessage(content)
+
+
 class _FakeResponse:
-    def __init__(self, output_text: str):
-        self.output_text = output_text
+    """Shape read by ai_parser's router: response.choices[0].message.content."""
+
+    def __init__(self, content: str):
+        self.choices = [_FakeChoice(content)]
 
 
-class _FakeResponses:
+class _FakeCompletions:
+    """Fake for provider.client.chat.completions.create()."""
+
     def __init__(self, scripted_output):
         self._scripted_output = scripted_output
+        self.calls: list = []
 
     async def create(self, **kwargs):
+        self.calls.append(kwargs)
         output = self._scripted_output
         if callable(output):
             output = output(kwargs)
         return _FakeResponse(output)
 
 
-class FakeOpenAIClient:
-    """Drop-in stand-in for AsyncOpenAI. Swap for the real client once the
-    API key is live -- nothing else about these tests needs to change."""
+class _FakeChat:
+    def __init__(self, completions):
+        self.completions = completions
+
+
+class _FakeClient:
+    """Drop-in stand-in for AsyncOpenAI with a scripted chat.completions.
+
+    Mirrors the chat.completions.create -> response.choices[0].message
+    shape the failover router actually calls, so AI-path tests run without
+    the network or a real API key."""
 
     def __init__(self, scripted_output):
-        self.responses = _FakeResponses(scripted_output)
+        self.chat = _FakeChat(_FakeCompletions(scripted_output))
+
+    @property
+    def completions(self):
+        return self.chat.completions
 
 
 def make_ai_parser(scripted_output: str) -> AIParser:
+    """Build an AIParser whose failover router holds a single fake provider
+    returning the scripted output -- no real network calls."""
     parser = AIParser(Settings(telegram_bot_token="x", openai_api_key="fake-key-for-tests"))
-    parser.client = FakeOpenAIClient(scripted_output)
-    parser.bypass_router = True
+    parser.router.providers = [
+        Provider(
+            name="OpenAI",
+            client=_FakeClient(scripted_output),
+            model="test-model",
+            supports_vision=True,
+        )
+    ]
     return parser
 
 
@@ -837,16 +876,13 @@ class TestExtendedFinancialFieldImport:
 
     @pytest.mark.asyncio
     async def test_human_readable_financial_keys_map_correctly(self):
-        from ai_parser import AIParser
-
-        parser = AIParser(Settings(telegram_bot_token="x", openai_api_key="fake-key"))
-        parser.client = FakeOpenAIClient(json.dumps([{
+        scripted = json.dumps([{
             "Loan Number": "F3", "First Name": "Human", "Last Name": "Keys",
             "Phone Number(s)": ["5551234567"],
             "Monthly Payment": "300.00", "Current Overdue Amount": "150.00",
             "Original Loan Amount": "8000.00",
-        }]))
-        parser.bypass_router = True
+        }])
+        parser = make_ai_parser(scripted)
         customers = await parser.parse_text("some free text")
         assert customers[0]["monthly_payment"] == "300.00"
         assert customers[0]["current_overdue_amount"] == "150.00"

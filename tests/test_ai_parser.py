@@ -329,16 +329,18 @@ class TestParseText:
     @pytest.mark.asyncio
     async def test_json_array_short_circuits_without_client_call(self):
         parser = AIParser(make_settings())
-        # Replace client with a fake that would fail if called.
-        parser.client = _FakeClient("SHOULD NOT BE CALLED")
+        # The JSON short-circuit must fire before the AI router is ever
+        # called, so inject a provider that would fail loudly if invoked.
+        parser.router = make_router([make_provider("OpenAI", "SHOULD NOT BE CALLED")])
         result = await parser.parse_text('[{"loan_number":"L1","first_name":"Ann"}]')
         assert result == [{"loan_number": "L1", "first_name": "Ann"}]
-        assert parser.client.completions.calls == []
+        assert parser.router.providers[0].client.completions.calls == []
 
     @pytest.mark.asyncio
     async def test_single_json_object_auto_wrapped(self):
         parser = AIParser(make_settings())
-        parser.client = _FakeClient("SHOULD NOT BE CALLED")
+        # Same intent: JSON wrap must not reach any AI provider.
+        parser.router = make_router([make_provider("OpenAI", "SHOULD NOT BE CALLED")])
         result = await parser.parse_text('{"loan_number":"L1","first_name":"Ann"}')
         assert result == [{"loan_number": "L1", "first_name": "Ann"}]
 

@@ -283,13 +283,7 @@ class AIParser:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
         self.router = LLMFailoverRouter(settings)
-        # When True, parse_text/parse_image use self.client directly
-        # (Responses API) instead of routing through self.router (Chat
-        # Completions). Intended for test fakes; production code always
-        # goes through the router regardless of self.client's type.
-        self.bypass_router = False
 
     async def parse_text(self, text: str) -> list[dict[str, Any]]:
         """Parse pasted JSON directly or send free-form text to OpenAI/Failover Router."""
@@ -304,22 +298,7 @@ class AIParser:
             customers = load_json_array(raw_json)
             return [_map_common_keys(customer) for customer in customers]
 
-        # When bypass_router is set (e.g. by a test fake), call the
-        # client directly using the Responses API format. Production
-        # always goes through the failover router, regardless of what
-        # type self.client is.
-        if self.bypass_router:
-            response = await self.client.responses.create(
-                model=self.settings.openai_model,
-                input=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"{AI_PROMPT}\n\nCustomer data:\n{stripped}"},
-                ],
-            )
-            raw_json = _extract_json_array(response.output_text)
-            return [_map_common_keys(customer) for customer in load_json_array(raw_json)]
-
-        # Otherwise, route through failover router
+        # Route free-form text through the failover router.
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"{AI_PROMPT}\n\nCustomer data:\n{stripped}"},
@@ -333,31 +312,8 @@ class AIParser:
         if not image_path.exists() or image_path.stat().st_size == 0:
             raise ParserError("The uploaded image could not be read.")
 
-        # When bypass_router is set (e.g. by a test fake), call the
-        # client directly using the Responses API format. Production
-        # always goes through the failover router.
-        if self.bypass_router:
-            image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
-            mime = "image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
-            response = await self.client.responses.create(
-                model=self.settings.openai_model,
-                input=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": f"{SYSTEM_PROMPT}\n\n{AI_PROMPT}"},
-                            {
-                                "type": "input_image",
-                                "image_url": f"data:{mime};base64,{image_data}",
-                            },
-                        ],
-                    }
-                ],
-            )
-            raw_json = _extract_json_array(response.output_text)
-            return [_map_common_keys(customer) for customer in load_json_array(raw_json)]
-
-        # Otherwise, route through failover router
+        # Route the image through the failover router (requires a
+        # vision-capable provider).
         image_data = base64.b64encode(image_path.read_bytes()).decode("utf-8")
         mime = "image/png" if image_path.suffix.lower() == ".png" else "image/jpeg"
 

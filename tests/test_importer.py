@@ -15,7 +15,6 @@ from validation import ValidationError, load_json_array, validate_customers
 class FakeParser(AIParser):
     def __init__(self):
         self.settings = Settings(telegram_bot_token="test", openai_api_key=None)
-        self.client = None
 
     async def parse_text(self, text):
         return [
