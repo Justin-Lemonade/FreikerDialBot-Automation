@@ -92,6 +92,24 @@ These need a product decision first, so they should stay out of the ready-to-del
 
 ## Recently completed
 
+- **Repository stabilization / developer experience pass:** a fresh clone
+  now goes from `git clone` to a running app via one documented process.
+  Added `setup.sh` / `setup.ps1` (idempotent: venv, backend deps, frontend
+  deps via `npm ci`, `.env` scaffolding) and `doctor.py` (checks Python/Node
+  toolchain, backend and frontend dependency installation, `.env` and
+  `TELEGRAM_BOT_TOKEN` presence, writable `data/`, SQLite accessibility,
+  and network reachability, each with a concrete remediation step).
+  Fixed a real fresh-clone failure: `python bot.py` builds the Mini App
+  frontend on startup, so frontend dependencies (`npm ci`) are required
+  even to run the bot alone, not just for "frontend development" as the
+  old README implied -- README now documents this explicitly. Removed
+  `feikerApp.ps1`, an unreferenced one-line `python bot.py` wrapper that
+  duplicated the documented startup command without adding anything.
+  Verified end-to-end from a simulated fresh clone: `setup.sh` completed
+  cleanly, `doctor.py` correctly failed on a missing token and missing
+  `frontend/node_modules` and passed once both were fixed, `python bot.py`
+  built the frontend and started the Mini App API, the full backend test
+  suite (330 tests) passed, and the frontend typecheck/build both passed.
 - **Max Call Attempts** is now a real, backend-enforced setting rather than a placeholder: `customers.attempt_count` tracks how many times a customer has been marked "Didn't Answer" (`QueueEngine.apply_action`), and `QueueEngine.restart_call_later` ("Call Back") excludes customers who have reached the configured cap instead of requeuing them forever. Configured via `GET/POST /settings` (new generic `app_settings` key/value table -- see `database.py`), wired into `Settings.tsx` via `useAppSettings.ts`.
 - **Auto Advance** is now real: when off, completing an outcome no longer immediately swaps in the next customer -- the card stays frozen on the just-completed customer until the operator taps "Next Customer" (`App.tsx`'s `pendingAdvance` state). The backend already returned the next customer in the same response either way; this only changes when the frontend displays it.
 - Added 21 new backend tests covering both features at the database, `QueueEngine`, and `mini_app_api` layers. Full suite: 330 passed.

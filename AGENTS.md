@@ -49,6 +49,8 @@ Treat `SECURITY_AUDIT_REPORT.md` as a security snapshot, not as an instruction f
 
 - `bot.py` — Telegram entrypoint.
 - `start_mini_app.py` — builds the frontend, starts the Mini App backend, and optionally opens ngrok.
+- `setup.sh` / `setup.ps1` — one-command environment setup (venv, backend deps, frontend deps, `.env` scaffolding). Idempotent -- safe to re-run.
+- `doctor.py` — environment diagnostic; verifies toolchain, dependencies, `.env`, and database accessibility before startup. Run it whenever setup behavior changes to keep its checks accurate.
 - `backend.py` — shared service construction.
 - `database.py`, `queue_engine.py`, `session_manager.py`, `statistics_engine.py` — data, queue, session, and stats logic.
 - `importer.py`, `ai_parser.py`, `validation.py` — import pipeline.
@@ -68,8 +70,9 @@ Treat `SECURITY_AUDIT_REPORT.md` as a security snapshot, not as an instruction f
 
 1. Backend tests: `pytest tests/ -q`
 2. Frontend checks: `cd frontend && npm ci && npx tsc -b --noEmit && npm run build`
-3. Check `git status` and review the diff.
-4. Confirm no secrets or runtime data are staged.
+3. If setup/startup behavior changed: `python doctor.py` and a fresh-clone run of `setup.sh` (or `setup.ps1`) followed by `python bot.py`.
+4. Check `git status` and review the diff.
+5. Confirm no secrets or runtime data are staged.
 
 ## Documentation rules
 
