@@ -14,6 +14,7 @@ interface Props {
   onOutcome: (outcome: string) => void;
   onOpenNotes: () => void;
   onOpenUpload: () => void;
+  onOpenDetail: () => void;
   /** True when Auto Advance (Settings) is off and an outcome has just
    * been recorded -- the card below is frozen on the just-completed
    * customer until onAdvanceNextCustomer is tapped. */
@@ -41,6 +42,7 @@ export const Home = ({
   onOutcome,
   onOpenNotes,
   onOpenUpload,
+  onOpenDetail,
   hasPendingAdvance,
   onAdvanceNextCustomer,
 }: Props) => {
@@ -87,7 +89,7 @@ export const Home = ({
 
   return (
     <div className="space-y-4">
-      <CustomerCard key={customer?.id ?? 'none'} customer={customer} isLeaving={isLeaving} />
+      <CustomerCard key={customer?.id ?? 'none'} customer={customer} isLeaving={isLeaving} onOpenDetail={customer ? onOpenDetail : undefined} />
 
       {hasPendingAdvance ? (
         // Auto Advance is off: the outcome above was already recorded
@@ -103,7 +105,7 @@ export const Home = ({
         </button>
       ) : (
         <>
-          <CallButton label="📞 CALL CUSTOMER" onClick={onStartCall} disabled={!customer} />
+          <CallButton label="📞 CALL CUSTOMER" onClick={onStartCall} disabled={!customer?.phone} />
 
           <OutcomeButtons onOutcome={handleOutcomeClick} disabled={isSubmitting || isLeaving || !customer} />
 

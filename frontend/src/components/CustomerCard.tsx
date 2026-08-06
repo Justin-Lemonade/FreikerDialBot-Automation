@@ -10,6 +10,10 @@ interface Props {
    * component a `key={customer.id}` at the call site so a genuinely new
    * customer actually remounts it. */
   isLeaving?: boolean;
+  /** Opens CustomerDetail (More Info) for this customer without
+   * leaving the main call workflow -- UI pass 3 requires More Info be
+   * reachable from Home, not only via Search. */
+  onOpenDetail?: () => void;
 }
 
 interface InfoCellProps {
@@ -46,7 +50,7 @@ const InfoCell = ({ icon, label, value, color }: InfoCellProps) => (
  * interface" instruction -- this card is the quick-glance surface, not
  * the exhaustive one.
  */
-export const CustomerCard = ({ customer, indexLabel, isLeaving }: Props) => {
+export const CustomerCard = ({ customer, indexLabel, isLeaving, onOpenDetail }: Props) => {
   const [isEntering, setIsEntering] = useState(true);
 
   useEffect(() => {
@@ -100,11 +104,52 @@ export const CustomerCard = ({ customer, indexLabel, isLeaving }: Props) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <InfoCell icon="📅" label="DAYS OVERDUE" value={customer.daysLate} color="var(--accent-red)" />
         <InfoCell icon="🪙" label="MONTHLY" value={customer.monthlyPayment} color="var(--text-primary)" />
-        <InfoCell icon="📞" label="PHONE" value={customer.phone} color="var(--accent-green)" />
       </div>
+
+      {/* Both phone numbers, each independently tap-to-dial -- UI pass
+          3 requires both numbers be reachable from the main workflow,
+          not just the single primary one the Call button dials. */}
+      <div className="mt-3 space-y-1.5">
+        <p className="font-display text-[8px]" style={{ color: 'var(--text-muted)' }}>
+          📞 PHONE NUMBERS
+        </p>
+        {customer.phones.length === 0 ? (
+          <p className="font-data text-base" style={{ color: 'var(--text-dim)' }}>
+            No phone on file
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {customer.phones.map((entry) => (
+              <a
+                key={entry.number}
+                href={`tel:${entry.number}`}
+                className="retro-button min-h-[40px] px-3 py-2 font-data text-base"
+                style={{
+                  border: `1px solid ${entry.isBlacklisted ? 'var(--accent-red)' : 'var(--border-frame)'}`,
+                  color: entry.isBlacklisted ? 'var(--accent-red)' : 'var(--accent-green)',
+                  textDecoration: entry.isBlacklisted ? 'line-through' : 'none',
+                  opacity: entry.isBlacklisted ? 0.7 : 1,
+                }}
+              >
+                {entry.number}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {onOpenDetail && (
+        <button
+          onClick={onOpenDetail}
+          className="retro-button mt-3 min-h-[40px] w-full font-display text-[9px]"
+          style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
+        >
+          MORE INFO →
+        </button>
+      )}
 
       {customer.isBlacklisted && (
         <div

@@ -20,6 +20,11 @@ export const useSession = () => {
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [isStale, setIsStale] = useState(false);
+  // Real timestamp of the last successful GET /session/current --
+  // backs Settings > Admin/Diagnostics "Sync Status", so that row
+  // shows an actual last-contact time instead of a fake "connected"
+  // indicator.
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
 
   const refreshSession = useCallback(async () => {
     setLoadState((prev) => (prev === 'idle' ? 'loading' : prev));
@@ -29,6 +34,7 @@ export const useSession = () => {
       setLoadState('success');
       setIsStale(false);
       setError(null);
+      setLastSyncedAt(Date.now());
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Could not load session.';
       setError(message);
@@ -51,7 +57,8 @@ export const useSession = () => {
     setLoadState('success');
     setIsStale(false);
     setError(null);
+    setLastSyncedAt(Date.now());
   }, []);
 
-  return { session, loadState, error, isStale, refreshSession, applySession, setSession };
+  return { session, loadState, error, isStale, lastSyncedAt, refreshSession, applySession, setSession };
 };
