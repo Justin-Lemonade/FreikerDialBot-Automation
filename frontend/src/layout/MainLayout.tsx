@@ -31,6 +31,12 @@ const NAV_ITEMS: { key: 'home' | 'commands' | 'search'; label: string; icon: str
   { key: 'commands', label: 'CMDS', icon: '▤', matches: ['commands', 'statistics'] },
 ];
 
+// Progress is the calling-workflow anchor, not a global page header --
+// per the UI pass 3 brief ("show progress only on Home / Calling
+// screens"), it takes up sticky vertical space that Search and Commands
+// need for their own content (results, keyboard-safe layout, stats).
+const SCREENS_WITH_PROGRESS: Screen[] = ['home', 'complete'];
+
 export const MainLayout = ({
   children,
   showNotes,
@@ -54,8 +60,7 @@ export const MainLayout = ({
   const currentIndex = session?.currentCustomerIndex ?? 0;
   const totalCount = session?.customerCount ?? 0;
   const progressPercent = session?.progress?.percent ?? (totalCount ? Math.round((currentIndex / totalCount) * 100) : 0);
-  const remaining = session?.progress?.remaining ?? session?.estimatedRemaining ?? 0;
-  const averageTime = session?.averageCallTime ?? '0s';
+  const showProgress = SCREENS_WITH_PROGRESS.includes(activeScreen);
 
   const navHandlers: Record<'home' | 'commands' | 'search', () => void> = {
     home: onNavigateHome,
@@ -85,16 +90,13 @@ export const MainLayout = ({
         </button>
       </div>
 
-      {/* PROGRESS -- sticky, always visible, the anchor of the app.
-          Every number below comes straight from the backend; there is
-          no client-side placeholder or fallback constant anywhere here. */}
-      <ProgressHeader
-        currentIndex={currentIndex}
-        totalCount={totalCount}
-        progressPercent={progressPercent}
-        remaining={remaining}
-        averageTime={averageTime}
-      />
+      {/* PROGRESS -- sticky, shown only on Home/calling-related screens
+          (see SCREENS_WITH_PROGRESS) so Search and Commands get the
+          full viewport instead. Every number below comes straight from
+          the backend; there is no client-side placeholder here. */}
+      {showProgress && (
+        <ProgressHeader currentIndex={currentIndex} totalCount={totalCount} progressPercent={progressPercent} />
+      )}
 
       {(isStale || bannerError) && (
         <div
@@ -116,7 +118,7 @@ export const MainLayout = ({
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto px-4 pb-28 pt-4">{children}</main>
+      <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-28 pt-4">{children}</main>
 
       {/* Bottom nav -- Home / Search / Commands. Settings lives in the
           top-right gear + slide-out drawer instead, so it isn't

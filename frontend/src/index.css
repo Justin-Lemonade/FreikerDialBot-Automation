@@ -197,22 +197,38 @@ p {
 
 /* Customer card hyperspace transition -- current card flies off
    right, next card enters from the left. Two directions, applied
-   via className toggling in CustomerCard's wrapper. */
+   via className toggling in CustomerCard's wrapper.
+
+   Distance is deliberately partial (55%, not further) and opacity
+   reaches 0 before the end of the animation: the card's parent
+   (<main>, which scrolls vertically) computes overflow-x to `auto`
+   as soon as overflow-y is set, per the CSS overflow spec -- so a
+   card translated far enough to leave that box gets hard-clipped by
+   it, which sliced the notched corners off mid-flight instead of
+   letting them slide smoothly out of view. Fading to transparent
+   before that clip boundary is reached means there is nothing left
+   to visibly clip. */
 @keyframes card-jump-out {
   0% {
     transform: translateX(0) rotate(0deg);
     opacity: 1;
   }
+  60% {
+    opacity: 1;
+  }
   100% {
-    transform: translateX(140%) rotate(8deg);
+    transform: translateX(55%) rotate(6deg);
     opacity: 0;
   }
 }
 
 @keyframes card-jump-in {
   0% {
-    transform: translateX(-140%) rotate(-8deg);
+    transform: translateX(-55%) rotate(-6deg);
     opacity: 0;
+  }
+  40% {
+    opacity: 1;
   }
   100% {
     transform: translateX(0) rotate(0deg);
