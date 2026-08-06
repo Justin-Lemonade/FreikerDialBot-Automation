@@ -126,7 +126,21 @@ def launch_mini_app_stack(
     # start actually depend on ngrok, so a missing ngrok binary should
     # degrade gracefully, not take down everything else with it.
     ngrok_available = shutil.which("ngrok") is not None
-    if not ngrok_available:
+    if ngrok_available:
+        _log("ngrok", "Killing any existing ngrok tunnels...")
+        try:
+            # `ngrok kill` doesn't exit with 0 if no tunnels are running,
+            # but it does if it successfully kills some. So we can't
+            # check the return code directly, but a bare `ngrok kill`
+            # without shell=True on Windows might fail. It's best to run
+            # it with shell=True for broadest compatibility.
+            subprocess.run(["ngrok", "kill"], capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            # This is already guarded by ngrok_available, but as a defense-in-depth,
+            # we'll catch it here too, to prevent crashing the launcher.
+            _log("ngrok", "Error: ngrok binary not found during kill attempt.")
+        _log("ngrok", "Existing ngrok tunnels killed (if any).")
+    else:
         _log(
             "ngrok",
             "ngrok not found on PATH -- skipping tunnel setup. "

@@ -320,7 +320,8 @@ def main() -> None:
     # when start_mini_app.py's own standalone mode is already managing
     # this as a subprocess and would otherwise double-launch it).
     mini_app_procs: list = []
-    skip_mini_app = "--no-mini-app" in sys.argv or os.environ.get("DISABLE_MINI_APP") == "1"
+    application = None  # Initialize application to None
+    skip_mini_app = "--no-mini_app" in sys.argv or os.environ.get("DISABLE_MINI_APP") == "1"
     if not skip_mini_app:
         try:
             from start_mini_app import launch_mini_app_stack
@@ -356,7 +357,7 @@ def main() -> None:
             try:
                 application = build_application()
                 asyncio.run(_verify_telegram_connectivity(application.bot_data["settings"].telegram_bot_token))
-                application.run_polling()
+                application.run_polling(drop_pending_updates=True)
                 break
             except KeyboardInterrupt:
                 log.info("Bot stopped by user")
@@ -383,6 +384,9 @@ def main() -> None:
                 time.sleep(delay)
     finally:
         _cleanup_mini_app_procs()
+        if application:
+            application.shutdown()
+            log.info("Telegram Application shut down.")
 
 
 if __name__ == "__main__":
