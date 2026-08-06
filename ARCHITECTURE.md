@@ -81,6 +81,7 @@ The API is organized around the same responsibilities as the backend. The curren
 - `POST /customer/edit`
 - `POST /customer/blacklist`
 - `POST /phone/blacklist`
+- `GET/POST /settings`
 - `GET /export`
 
 There is no `POST /queue/resume` route yet, and there is no `POST /call/return` route in the current code.

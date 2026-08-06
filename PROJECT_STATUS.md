@@ -87,33 +87,25 @@ These need a product decision first, so they should stay out of the ready-to-del
 - Denied admin attempts are not yet audit-logged.
 - `POST /queue/resume` is still not wired into the Mini App API even though the queue engine already has resume logic.
 - The Mini App still has no import flow of its own; importing remains Telegram-only.
-- Frontend test coverage is still sparse or absent compared with the backend tests.
-- Settings > Pre-ready Customers, Active Queue/New Contacts behavior, Language, Accent Color, and LLM provider preferences are still unimplemented placeholders in `Settings.tsx` (honestly disabled, not faked).
+- Frontend test coverage is still sparse or absent -- there is no frontend test runner configured yet (no vitest/jest), so UI pass 3's layout/animation/behavior changes are validated by typecheck + lint + build + manual diff review, not automated frontend tests. Setting up a frontend test framework is its own decision, not folded into this pass.
+- Settings > Pre-ready Customers, Active Queue/New Contacts behavior, Language (Russian/Tajik), Accent Color, Animation Intensity, and several Display/Phone/Search/Admin rows are still unimplemented placeholders in `Settings.tsx` (honestly disabled, not faked) -- see the Settings section list there for the full current set.
+- Home does not yet have a distinct polished landing screen separate from the live call workflow; the "Welcome Back" state only appears when the queue is genuinely empty (`session.customerCount === 0`). Whether Home should gain a separate landing state, or stay merged with the call workflow as it is now, is still an open product decision from the UI pass 3 brief.
 
 ## Recently completed
 
-- **Repository stabilization / developer experience pass:** a fresh clone
-  now goes from `git clone` to a running app via one documented process.
-  Added `setup.sh` / `setup.ps1` (idempotent: venv, backend deps, frontend
-  deps via `npm ci`, `.env` scaffolding) and `doctor.py` (checks Python/Node
-  toolchain, backend and frontend dependency installation, `.env` and
-  `TELEGRAM_BOT_TOKEN` presence, writable `data/`, SQLite accessibility,
-  and network reachability, each with a concrete remediation step).
-  Fixed a real fresh-clone failure: `python bot.py` builds the Mini App
-  frontend on startup, so frontend dependencies (`npm ci`) are required
-  even to run the bot alone, not just for "frontend development" as the
-  old README implied -- README now documents this explicitly. Removed
-  `feikerApp.ps1`, an unreferenced one-line `python bot.py` wrapper that
-  duplicated the documented startup command without adding anything.
-  Verified end-to-end from a simulated fresh clone: `setup.sh` completed
-  cleanly, `doctor.py` correctly failed on a missing token and missing
-  `frontend/node_modules` and passed once both were fixed, `python bot.py`
-  built the frontend and started the Mini App API, the full backend test
-  suite (330 tests) passed, and the frontend typecheck/build both passed.
-- **Max Call Attempts** is now a real, backend-enforced setting rather than a placeholder: `customers.attempt_count` tracks how many times a customer has been marked "Didn't Answer" (`QueueEngine.apply_action`), and `QueueEngine.restart_call_later` ("Call Back") excludes customers who have reached the configured cap instead of requeuing them forever. Configured via `GET/POST /settings` (new generic `app_settings` key/value table -- see `database.py`), wired into `Settings.tsx` via `useAppSettings.ts`.
-- **Auto Advance** is now real: when off, completing an outcome no longer immediately swaps in the next customer -- the card stays frozen on the just-completed customer until the operator taps "Next Customer" (`App.tsx`'s `pendingAdvance` state). The backend already returned the next customer in the same response either way; this only changes when the frontend displays it.
-- Added 21 new backend tests covering both features at the database, `QueueEngine`, and `mini_app_api` layers. Full suite: 330 passed.
-- Frontend typecheck, lint, and build all pass with these changes.
+- **UI pass 3 (multi-commit):**
+  - Fixed the Call button silently failing to dial on some mobile browsers/WebViews (including Telegram's): `onStartCall` was awaiting the `/call/start` bookkeeping request *before* navigating to `tel:`, which pushes the navigation past the click event's synchronous call stack -- several mobile browsers require `tel:`/`mailto:` navigation to happen within the original user-gesture event or they silently block it. Now dials first, synchronously, then fires bookkeeping afterward without awaiting it.
+  - `mini_app_api._customer_payload` now returns `phones: [{number, isBlacklisted}]` for every number on file (previously collapsed to a single first-non-blacklisted `phone` string, which is kept for backward compatibility). `CustomerCard` (the live Home workflow card) and `CustomerDetail` both show every number as its own tap-to-dial link.
+  - `CustomerCard` gained a "MORE INFO" button so `CustomerDetail` is reachable from the live call workflow, not only via Search. `CustomerDetail` now takes a `backLabel`/dynamic `onBack` so it returns to whichever screen opened it.
+  - `ProgressHeader` compacted to a single thin row (count + segments + percent); dropped the "CUSTOMER PROGRESS" label row and the derived "~X REMAINING" estimate line (never a real backend value). `MainLayout` now only renders it on Home/calling-related screens (`home`, `complete`), not on Search/Commands/Statistics.
+  - Fixed the customer-card slide animation clipping its own notched corners mid-transition: `<main>` (`overflow-y: auto`) was implicitly getting `overflow-x: auto` per the CSS overflow spec, hard-clipping the card as it translated 140% off-screen. Made `overflow-x: hidden` explicit and shortened the slide distance with an earlier opacity fade.
+  - Search is now keyboard-safe on mobile (`inputMode="search"`, `enterKeyHint="search"`, autocomplete/autocorrect disabled, scrolls the input into view on focus so results aren't hidden behind the keyboard) and highlights the matched substring in each result's name/loan number/phone, computed client-side with the same case-insensitive substring test `Database.search_customers` actually uses.
+  - `Settings.tsx` rebuilt into the UI pass 3 brief's categories (Calling Behavior, Phone Handling, Display, Queue, Search, Appearance, Language, Admin/Diagnostics). Added two more real rows: Backend Connectivity and Sync Status, now read from `useSession`'s `isStale`/new `lastSyncedAt` field instead of a decorative indicator. Every other row in each category is an honest, disabled placeholder labeled with what it will do, grouped correctly so wiring the real control later doesn't require reworking the screen.
+  - Added the commit/push cadence rule to `AGENTS.md`.
+  - Backend: 4 new tests (2 for the `phones` field, unrelated Max Call Attempts/Settings tests from the prior pass unaffected). Full suite: 332 passed throughout. Frontend typecheck, lint, and build all pass after every commit.
+
+- **Max Call Attempts** is now a real, backend-enforced setting rather than a placeholder: `customers.attempt_count` tracks how many times a customer has been marked "Didn't Answer" (`QueueEngine.apply_action`), and `QueueEngine.restart_call_later` ("Call Back") excludes customers who have reached the configured cap instead of requeuing them forever. Configured via `GET/POST /settings` (generic `app_settings` key/value table -- see `database.py`), wired into `Settings.tsx` via `useAppSettings.ts`.
+- **Auto Advance** is real: when off, completing an outcome no longer immediately swaps in the next customer -- the card stays frozen on the just-completed customer until the operator taps "Next Customer" (`App.tsx`'s `pendingAdvance` state). The backend already returned the next customer in the same response either way; this only changes when the frontend displays it.
 
 ## Decisions still needed
 
