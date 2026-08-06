@@ -74,6 +74,14 @@ Treat `SECURITY_AUDIT_REPORT.md` as a security snapshot, not as an instruction f
 4. Check `git status` and review the diff.
 5. Confirm no secrets or runtime data are staged.
 
+## Commit and push cadence
+
+- Keep commits small and focused: one logical change per commit, with a message that says what changed and why.
+- Do not leave a long session uncommitted. If you have made several related, validated changes, commit them before starting unrelated work.
+- Push after a few related commits, or at a safe stopping point where the tree is validated (tests, typecheck, build) and reviewed (`git diff`).
+- Always review the diff before pushing.
+- Verify a push actually landed by checking the commit on GitHub (e.g. via the GitHub API), not just by trusting the `git push` exit code -- the repo may have moved since the local clone was made.
+
 ## Documentation rules
 
 - Keep rules in `AGENTS.md`.
