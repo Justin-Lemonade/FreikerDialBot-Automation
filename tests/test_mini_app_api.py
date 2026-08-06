@@ -307,6 +307,60 @@ def test_call_back_respects_max_call_attempts_limit(api_server):
     assert service.database.status_counts()["waiting"] == 0
 
 
+def test_customer_payload_exposes_every_phone_number(api_server):
+    """UI pass 3: the main call workflow needs access to both phone
+    numbers, not just the single first-non-blacklisted one `phone` has
+    always carried. `phones` must list every number on file, in stored
+    order, each with its own blacklist status."""
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "two-phones-1",
+                "first_name": "Two",
+                "last_name": "Phones",
+                "phone_numbers": ["+15550001111", "+15550002222"],
+                "balance": "100",
+                "days_overdue": "3",
+            }
+        ]
+    )
+    status, current = _request_json(server, "/customer/current", service=service)
+    assert status == 200
+    assert current["phones"] == [
+        {"number": "+15550001111", "isBlacklisted": False},
+        {"number": "+15550002222", "isBlacklisted": False},
+    ]
+    # Backward-compatible single-phone field is unchanged.
+    assert current["phone"] == "+15550001111"
+
+
+def test_customer_payload_flags_blacklisted_phones_individually(api_server):
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "two-phones-2",
+                "first_name": "Partly",
+                "last_name": "Blacklisted",
+                "phone_numbers": ["+15550003333", "+15550004444"],
+                "balance": "100",
+                "days_overdue": "3",
+            }
+        ]
+    )
+    service.database.blacklist_phone("+15550003333")
+
+    status, current = _request_json(server, "/customer/current", service=service)
+    assert status == 200
+    assert current["phones"] == [
+        {"number": "+15550003333", "isBlacklisted": True},
+        {"number": "+15550004444", "isBlacklisted": False},
+    ]
+    # The single `phone` field skips the blacklisted number.
+    assert current["phone"] == "+15550004444"
+
+
 def test_export_requires_admin_authorization(authenticated_api_server):
     """SECURITY regression test: anonymous requests (401, no credentials
     at all -- caught by the general auth gate before /export's own admin

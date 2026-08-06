@@ -54,7 +54,9 @@ class MiniAppService:
         if not customer:
             return None
         phone_numbers = customer.get("phone_numbers") or []
-        phone = self.database.first_non_blacklisted_phone(phone_numbers) if isinstance(phone_numbers, list) else ""
+        if not isinstance(phone_numbers, list):
+            phone_numbers = []
+        phone = self.database.first_non_blacklisted_phone(phone_numbers) if phone_numbers else ""
         notes = []
         if customer.get("warning_note"):
             notes.append(customer["warning_note"])
@@ -68,6 +70,16 @@ class MiniAppService:
             "currentOverdueAmount": customer.get("current_overdue_amount", ""),
             "originalLoanAmount": customer.get("original_loan_amount", ""),
             "phone": phone,
+            # Every phone number on file, in stored order, each flagged
+            # with its own blacklist status -- the UI pass 3 brief
+            # requires "both phone numbers" be reachable from the main
+            # workflow, not just the single first-non-blacklisted one
+            # `phone` above has always carried (kept for backward
+            # compatibility with existing call sites).
+            "phones": [
+                {"number": number, "isBlacklisted": self.database.is_phone_blacklisted(number)}
+                for number in phone_numbers
+            ],
             "notes": notes,
             "loan_number": customer.get("loan_number", ""),
             "first_name": customer.get("first_name", ""),

@@ -5,6 +5,7 @@ import type { CustomerRecord } from '../types';
 interface Props {
   customerId: string;
   onBack: () => void;
+  backLabel?: string;
 }
 
 interface DetailRowProps {
@@ -45,7 +46,7 @@ const DetailRow = ({ icon, label, value, color }: DetailRowProps) => (
  * invented here; only real fields are shown, per the brief's own
  * instruction not to copy unsupported fields from the reference images.
  */
-export const CustomerDetail = ({ customerId, onBack }: Props) => {
+export const CustomerDetail = ({ customerId, onBack, backLabel = '← BACK TO SEARCH' }: Props) => {
   const [record, setRecord] = useState<CustomerRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,7 +72,7 @@ export const CustomerDetail = ({ customerId, onBack }: Props) => {
         className="retro-button min-h-[44px] px-4 font-display text-[10px]"
         style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
       >
-        ← BACK TO SEARCH
+        {backLabel}
       </button>
 
       {error && (
@@ -107,12 +108,44 @@ export const CustomerDetail = ({ customerId, onBack }: Props) => {
             </p>
 
             <div>
-              <DetailRow icon="📞" label="Phone" value={record.phone} color="var(--accent-green)" />
               <DetailRow icon="🪙" label="Monthly Payment" value={record.monthlyPayment} />
               <DetailRow icon="📅" label="Days Overdue" value={record.daysLate} color="var(--accent-red)" />
               <DetailRow icon="💵" label="Current Balance" value={record.balance} />
               <DetailRow icon="🪙" label="Amount Overdue" value={record.currentOverdueAmount} />
               <DetailRow icon="🪙" label="Original Loan Amount" value={record.originalLoanAmount} />
+            </div>
+
+            {/* All numbers on file, each independently tap-to-dial and
+                flagged if blacklisted -- mirrors the phone row on the
+                live call card (CustomerCard) so More Info never shows
+                less than the main workflow does. */}
+            <div className="mt-3 border-t pt-3" style={{ borderColor: 'var(--border-frame)' }}>
+              <p className="mb-2 font-display text-[9px]" style={{ color: 'var(--text-muted)' }}>
+                📞 PHONE NUMBERS
+              </p>
+              {record.phones.length === 0 ? (
+                <p className="font-data text-lg" style={{ color: 'var(--text-dim)' }}>
+                  No phone on file
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {record.phones.map((entry) => (
+                    <a
+                      key={entry.number}
+                      href={`tel:${entry.number}`}
+                      className="retro-button min-h-[40px] px-3 py-2 font-data text-base"
+                      style={{
+                        border: `1px solid ${entry.isBlacklisted ? 'var(--accent-red)' : 'var(--border-frame)'}`,
+                        color: entry.isBlacklisted ? 'var(--accent-red)' : 'var(--accent-green)',
+                        textDecoration: entry.isBlacklisted ? 'line-through' : 'none',
+                        opacity: entry.isBlacklisted ? 0.7 : 1,
+                      }}
+                    >
+                      {entry.number}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

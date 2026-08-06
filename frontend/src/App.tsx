@@ -30,6 +30,7 @@ const App = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [detailReturnScreen, setDetailReturnScreen] = useState<Screen>('search');
   const [pendingAdvance, setPendingAdvance] = useState<PendingAdvance | null>(null);
 
   const { session, loadState, error: sessionError, isStale, refreshSession, applySession } = useSession();
@@ -202,6 +203,7 @@ const App = () => {
         <Search
           onSelectCustomer={(selected) => {
             setSelectedCustomerId(selected.id);
+            setDetailReturnScreen('search');
             setScreen('customerDetail');
           }}
         />
@@ -209,7 +211,13 @@ const App = () => {
     }
 
     if (screen === 'customerDetail' && selectedCustomerId) {
-      return <CustomerDetail customerId={selectedCustomerId} onBack={() => setScreen('search')} />;
+      return (
+        <CustomerDetail
+          customerId={selectedCustomerId}
+          onBack={() => setScreen(detailReturnScreen)}
+          backLabel={detailReturnScreen === 'home' ? '← BACK TO CALL' : '← BACK TO SEARCH'}
+        />
+      );
     }
 
     if (screen === 'complete') {
@@ -246,6 +254,12 @@ const App = () => {
         onOpenNotes={() => setShowNotes(true)}
         hasPendingAdvance={Boolean(pendingAdvance)}
         onAdvanceNextCustomer={advanceToNextCustomer}
+        onOpenDetail={() => {
+          if (!currentCustomer) return;
+          setSelectedCustomerId(currentCustomer.id);
+          setDetailReturnScreen('home');
+          setScreen('customerDetail');
+        }}
         onOpenUpload={() => {
           /* No-op: the Upload button is disabled (see Home.tsx) until a
              real Mini App import endpoint exists. */

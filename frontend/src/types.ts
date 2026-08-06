@@ -9,6 +9,11 @@ export type Screen = 'home' | 'commands' | 'search' | 'statistics' | 'complete' 
  * Treating these as numbers in the frontend would silently coerce
  * blanks to 0/NaN, which is wrong for an unknown value.
  */
+export interface CustomerPhone {
+  number: string;
+  isBlacklisted: boolean;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -21,7 +26,11 @@ export interface Customer {
   monthlyPayment: string;
   currentOverdueAmount: string;
   originalLoanAmount: string;
+  /** First non-blacklisted number -- kept for existing call sites
+   * (dialing, search result subtitle). Use `phones` when every number
+   * on file is needed, e.g. the main call workflow's phone picker. */
   phone: string;
+  phones: CustomerPhone[];
   notes: string[];
   status: string;
   isBlacklisted: boolean;
