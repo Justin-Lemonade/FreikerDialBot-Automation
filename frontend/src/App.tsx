@@ -76,21 +76,25 @@ const App = () => {
 
   const currentCustomer = useMemo(() => customer ?? session?.currentCustomer ?? null, [customer, session]);
 
-  const onStartCall = useCallback(async () => {
-    if (!currentCustomer) return;
+  const onStartCall = useCallback(() => {
+    if (!currentCustomer?.phone) return;
     timer.reset();
     setActionError(null);
-    try {
-      await api.startCall(currentCustomer.id);
-    } catch (err) {
-      // Starting-call bookkeeping failing shouldn't block the operator
-      // from actually dialing -- surface it, don't block the phone call.
-      setActionError(err instanceof ApiError ? err.message : 'Could not record call start.');
-    }
     telegram.haptic('medium');
-    if (currentCustomer.phone) {
-      window.location.href = `tel:${currentCustomer.phone}`;
-    }
+    // Dial immediately and synchronously, inside this click handler's
+    // own call stack -- tel: navigation only reliably works while
+    // still inside the original user-gesture event; several mobile
+    // browsers (including Telegram's in-app WebView) silently block
+    // it once execution has crossed an await/microtask boundary. This
+    // used to await api.startCall() first, which pushed the
+    // navigation past that boundary and could make the button appear
+    // to do nothing.
+    window.location.href = `tel:${currentCustomer.phone}`;
+    // Bookkeeping happens after, fire-and-forget: a failure here must
+    // never block or delay the actual phone call.
+    api.startCall(currentCustomer.id).catch((err) => {
+      setActionError(err instanceof ApiError ? err.message : 'Could not record call start.');
+    });
   }, [currentCustomer, timer, telegram]);
 
   const handleOutcome = useCallback(

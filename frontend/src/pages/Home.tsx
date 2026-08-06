@@ -105,7 +105,7 @@ export const Home = ({
         </button>
       ) : (
         <>
-          <CallButton label="📞 CALL CUSTOMER" onClick={onStartCall} disabled={!customer} />
+          <CallButton label="📞 CALL CUSTOMER" onClick={onStartCall} disabled={!customer?.phone} />
 
           <OutcomeButtons onOutcome={handleOutcomeClick} disabled={isSubmitting || isLeaving || !customer} />
 
