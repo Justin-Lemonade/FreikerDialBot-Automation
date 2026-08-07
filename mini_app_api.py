@@ -104,6 +104,7 @@ class MiniAppService:
     def get_current_session(self) -> dict[str, Any]:
         progress = self.queue_engine.status()
         session = self.session_manager.current_session()
+        queue_state = self.database.get_queue_session()
         queue_complete = bool(progress.total_customers) and progress.remaining == 0
 
         if session and queue_complete:
@@ -136,6 +137,7 @@ class MiniAppService:
             "estimatedRemaining": progress.remaining,
             "averageCallTime": self._format_duration(average_seconds),
             "completed": completed,
+            "isPaused": bool(queue_state.get("is_paused")),
             "currentCustomer": self._customer_payload(customer),
             "progress": {
                 "remaining": progress.remaining,
@@ -303,7 +305,14 @@ class MiniAppService:
 
     def pause_queue(self, telegram_user_id: int | None = None) -> dict[str, Any]:
         self.queue_engine.pause(telegram_user_id=telegram_user_id)
-        return {"ok": True, "paused": True}
+        return {"ok": True, "paused": True, "session": self.get_current_session()}
+
+    def resume_queue(self, telegram_user_id: int | None = None) -> dict[str, Any]:
+        """Was already implemented in QueueEngine (resume()) but never
+        exposed as a Mini App route -- Commands' "Pause Queue" had
+        nothing to toggle back to. Mirrors pause_queue's response shape."""
+        self.queue_engine.resume(telegram_user_id=telegram_user_id)
+        return {"ok": True, "paused": False, "session": self.get_current_session()}
 
     def call_back(self, telegram_user_id: int | None = None) -> dict[str, Any]:
         """Requeue every 'call_later' customer -- the Mini App equivalent
@@ -450,6 +459,7 @@ _API_PATHS = frozenset({
     "/call/result",
     "/note",
     "/queue/pause",
+    "/queue/resume",
     "/queue/call-back",
     "/queue/upcoming",
     "/customer/search",
@@ -575,6 +585,9 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
             return True
         if path == "/queue/pause" and method == "POST":
             self._json(200, self.service.pause_queue(telegram_user_id=telegram_user_id))
+            return True
+        if path == "/queue/resume" and method == "POST":
+            self._json(200, self.service.resume_queue(telegram_user_id=telegram_user_id))
             return True
         if path == "/queue/call-back" and method == "POST":
             self._json(200, self.service.call_back(telegram_user_id=telegram_user_id))

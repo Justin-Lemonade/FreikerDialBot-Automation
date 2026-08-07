@@ -438,6 +438,40 @@ def test_pause_endpoint_pauses_the_queue(api_server):
     assert service.database.get_queue_session()["is_paused"] == 1
 
 
+def test_resume_endpoint_resumes_the_queue(api_server):
+    """POST /queue/resume was added because QueueEngine.resume() already
+    existed but had no Mini App route -- Commands' Pause Queue had
+    nothing to toggle back to."""
+    server, service = api_server
+    service.database.insert_customers(
+        [{"loan_number": "resume-1", "first_name": "Re", "last_name": "Sume",
+          "phone_numbers": ["+15550000008"], "balance": "10", "days_overdue": "1"}]
+    )
+    _request_json(server, "/queue/pause", method="POST", service=service)
+    assert service.database.get_queue_session()["is_paused"] == 1
+
+    status, result = _request_json(server, "/queue/resume", method="POST", service=service)
+    assert status == 200
+    assert result["paused"] is False
+    assert service.database.get_queue_session()["is_paused"] == 0
+
+
+def test_session_current_reports_is_paused(api_server):
+    server, service = api_server
+    service.database.insert_customers(
+        [{"loan_number": "is-paused-1", "first_name": "Is", "last_name": "Paused",
+          "phone_numbers": ["+15550000009"], "balance": "10", "days_overdue": "1"}]
+    )
+    status, session = _request_json(server, "/session/current", service=service)
+    assert status == 200
+    assert session["isPaused"] is False
+
+    _request_json(server, "/queue/pause", method="POST", service=service)
+    status, session = _request_json(server, "/session/current", service=service)
+    assert status == 200
+    assert session["isPaused"] is True
+
+
 def test_mini_app_never_surfaces_a_blacklisted_customer(api_server):
     """The Mini App must never show a blacklisted customer as current/
     next -- it calls the exact same QueueEngine.peek_next_customer()
