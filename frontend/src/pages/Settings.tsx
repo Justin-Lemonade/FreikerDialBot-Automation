@@ -53,16 +53,18 @@ const MAX_ATTEMPTS_OPTIONS: { label: string; value: number | null }[] = [
 const MaxCallAttemptsRow = () => {
   const { settings, updateSettings, isSaving } = useAppSettings();
   return (
-    <div className="flex items-center justify-between border-b py-3" style={{ borderColor: 'var(--border-frame)' }}>
-      <div>
-        <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
-          Max Call Attempts
-        </p>
-        <p className="font-data text-sm" style={{ color: 'var(--text-muted)' }}>
-          Attempts before "Call Back" stops requeuing
-        </p>
-      </div>
-      <div className="flex gap-1">
+    <div className="border-b py-3" style={{ borderColor: 'var(--border-frame)' }}>
+      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
+        Max Call Attempts
+      </p>
+      <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
+        Attempts before "Call Back" stops requeuing
+      </p>
+      {/* Stacked below the label (not squeezed onto the same row as
+          the text) so each option button can hit a real ~44px touch
+          target instead of the cramped 32px row that used to sit
+          beside the label. */}
+      <div className="grid grid-cols-5 gap-1.5">
         {MAX_ATTEMPTS_OPTIONS.map((option) => {
           const isActive = settings.maxCallAttempts === option.value;
           return (
@@ -70,7 +72,7 @@ const MaxCallAttemptsRow = () => {
               key={option.label}
               onClick={() => updateSettings({ maxCallAttempts: option.value })}
               disabled={isSaving}
-              className="retro-button flex h-8 w-8 items-center justify-center font-display text-[10px] disabled:opacity-50"
+              className="retro-button flex min-h-[44px] items-center justify-center font-display text-xs disabled:opacity-50"
               style={{
                 background: isActive ? 'var(--accent-green)' : 'var(--bg-panel)',
                 color: isActive ? 'var(--accent-green-text)' : 'var(--text-muted)',
@@ -107,7 +109,7 @@ const AutoAdvanceRow = () => {
       <button
         onClick={() => updateSettings({ autoAdvance: !settings.autoAdvance })}
         disabled={isSaving}
-        className="retro-button min-h-[32px] px-3 font-display text-[9px] disabled:opacity-50"
+        className="retro-button min-h-[44px] min-w-[64px] px-3 font-display text-[10px] disabled:opacity-50"
         style={{
           background: settings.autoAdvance ? 'var(--accent-green)' : 'var(--bg-panel)',
           color: settings.autoAdvance ? 'var(--accent-green-text)' : 'var(--text-muted)',
