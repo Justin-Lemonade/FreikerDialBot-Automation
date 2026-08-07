@@ -109,13 +109,25 @@ export const CustomerCard = ({ customer, indexLabel, isLeaving, onOpenDetail }: 
         <InfoCell icon="🪙" label="MONTHLY" value={customer.monthlyPayment} color="var(--text-primary)" />
       </div>
 
-      {/* Both phone numbers, each independently tap-to-dial -- UI pass
-          3 requires both numbers be reachable from the main workflow,
-          not just the single primary one the Call button dials. */}
-      <div className="mt-3 space-y-1.5">
-        <p className="font-display text-[8px]" style={{ color: 'var(--text-muted)' }}>
-          📞 PHONE NUMBERS
-        </p>
+      {/* Both phone numbers, each independently tap-to-dial, with More
+          Info on the same row instead of its own full-width button
+          below -- keeps the card from growing taller than it needs to
+          (Home must not require constant scrolling). */}
+      <div className="mt-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="font-display text-[8px]" style={{ color: 'var(--text-muted)' }}>
+            📞 PHONE NUMBERS
+          </p>
+          {onOpenDetail && (
+            <button
+              onClick={onOpenDetail}
+              className="font-display text-[8px] underline underline-offset-2"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              MORE INFO →
+            </button>
+          )}
+        </div>
         {customer.phones.length === 0 ? (
           <p className="font-data text-base" style={{ color: 'var(--text-dim)' }}>
             No phone on file
@@ -126,7 +138,7 @@ export const CustomerCard = ({ customer, indexLabel, isLeaving, onOpenDetail }: 
               <a
                 key={entry.number}
                 href={`tel:${entry.number}`}
-                className="retro-button min-h-[40px] px-3 py-2 font-data text-base"
+                className="retro-button min-h-[36px] px-3 py-1.5 font-data text-base"
                 style={{
                   border: `1px solid ${entry.isBlacklisted ? 'var(--accent-red)' : 'var(--border-frame)'}`,
                   color: entry.isBlacklisted ? 'var(--accent-red)' : 'var(--accent-green)',
@@ -140,16 +152,6 @@ export const CustomerCard = ({ customer, indexLabel, isLeaving, onOpenDetail }: 
           </div>
         )}
       </div>
-
-      {onOpenDetail && (
-        <button
-          onClick={onOpenDetail}
-          className="retro-button mt-3 min-h-[40px] w-full font-display text-[9px]"
-          style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
-        >
-          MORE INFO →
-        </button>
-      )}
 
       {customer.isBlacklisted && (
         <div
