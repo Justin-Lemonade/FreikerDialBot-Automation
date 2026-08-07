@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, ApiError } from '../api/client';
+import { downloadBlob } from '../lib/download';
 import type { SessionSummary } from '../types';
 
 interface Props {
@@ -64,14 +65,7 @@ export const Commands = ({ session, onOpenStatistics, onOpenNotes, onOpenSearch,
     setIsExporting(true);
     try {
       const { blob, filename } = await api.exportData(format);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
       return `Exported ${filename}`;
     } catch (err) {
       // GET /export is admin-only (mini_app_api.py checks

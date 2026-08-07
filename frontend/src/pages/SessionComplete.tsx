@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { api, ApiError } from '../api/client';
+import { downloadBlob } from '../lib/download';
 import type { SessionSummary } from '../types';
 
 interface Props {
@@ -10,6 +13,25 @@ export const SessionComplete = ({ session, onRetry, onHome }: Props) => {
   const contacted = session?.progress?.contacted;
   const didNotAnswer = session?.progress?.didNotAnswer;
   const hasBreakdown = contacted !== undefined && didNotAnswer !== undefined;
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      // GET /export is admin-only (mini_app_api.py checks
+      // security.is_admin) -- a non-admin operator sees a real error
+      // here instead of the button silently doing nothing, which is
+      // what it did before this had an onClick at all.
+      const { blob, filename } = await api.exportData('csv');
+      downloadBlob(blob, filename);
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : 'Export failed. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -27,6 +49,12 @@ export const SessionComplete = ({ session, onRetry, onHome }: Props) => {
         )}
       </div>
 
+      {exportError && (
+        <div className="p-3 text-center font-data text-base" style={{ border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
+          {exportError}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <button
           onClick={onRetry}
@@ -36,10 +64,12 @@ export const SessionComplete = ({ session, onRetry, onHome }: Props) => {
           RETRY NO-ANSWER
         </button>
         <button
-          className="retro-button min-h-[56px] font-display text-[10px]"
+          onClick={handleExport}
+          disabled={isExporting}
+          className="retro-button min-h-[56px] font-display text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
           style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
         >
-          EXPORT
+          {isExporting ? 'EXPORTING…' : 'EXPORT'}
         </button>
       </div>
       <button
