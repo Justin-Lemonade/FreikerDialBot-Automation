@@ -6,6 +6,7 @@ For rules and working conventions, read `AGENTS.md`.
 For technical architecture and endpoint details, read `ARCHITECTURE.md`.
 For security findings, read `SECURITY_AUDIT_REPORT.md`.
 For user-facing overview and setup, read `README.md`.
+For frontend UI/UX pass history and the current design backlog, read `FreikerDialBot_UI_UX_Development_Log.md`.
 
 ## What is already in the repo
 
@@ -68,10 +69,7 @@ How to use it:
 
 #### 3. Add `POST /queue/resume` to the Mini App API
 
-- Why: `QueueEngine.resume()` already exists, but the Mini App has no route that exposes it.
-- Scope: `mini_app_api.py`, `frontend/` API call site(s), and tests.
-- Goal: expose queue resume as a real Mini App route and keep it under the same auth rules as the other real endpoints.
-- Verification: the route works when authenticated and returns 401 without auth.
+- **Done.** `POST /queue/resume` was added, and `GET /session/current` now reports `isPaused`. `Commands.tsx` uses both to make Pause/Resume a real toggle.
 
 ### Not delegated yet
 
@@ -85,13 +83,21 @@ These need a product decision first, so they should stay out of the ready-to-del
 
 - CORS is still wide open and should be restricted to the real Mini App origin.
 - Denied admin attempts are not yet audit-logged.
-- `POST /queue/resume` is still not wired into the Mini App API even though the queue engine already has resume logic.
 - The Mini App still has no import flow of its own; importing remains Telegram-only.
-- Frontend test coverage is still sparse or absent -- there is no frontend test runner configured yet (no vitest/jest), so UI pass 3's layout/animation/behavior changes are validated by typecheck + lint + build + manual diff review, not automated frontend tests. Setting up a frontend test framework is its own decision, not folded into this pass.
-- Settings > Pre-ready Customers, Active Queue/New Contacts behavior, Language (Russian/Tajik), Accent Color, Animation Intensity, and several Display/Phone/Search/Admin rows are still unimplemented placeholders in `Settings.tsx` (honestly disabled, not faked) -- see the Settings section list there for the full current set.
-- Home does not yet have a distinct polished landing screen separate from the live call workflow; the "Welcome Back" state only appears when the queue is genuinely empty (`session.customerCount === 0`). Whether Home should gain a separate landing state, or stay merged with the call workflow as it is now, is still an open product decision from the UI pass 3 brief.
+- Frontend test coverage is still sparse or absent -- there is no frontend test runner configured yet (no vitest/jest). All frontend changes are validated by typecheck + lint + build + manual diff review, not automated frontend tests. Setting up a frontend test framework is its own decision, flagged as the top open item in `FreikerDialBot_UI_UX_Development_Log.md`.
+- Settings > Phone Handling (primary-number preference, quick switching), Display, Queue (pre-ready count, active-queue/new-contacts ordering), most of Search, Language (Russian/Tajik), Accent Color, Animation Intensity, and Version Info are still unimplemented placeholders in `Settings.tsx` (honestly disabled, not faked) -- see the Settings section list there for the full current set.
+- Landing's "full-screen" height (`calc(100dvh - 8.5rem)`) is an approximation of the app bar + bottom nav height, not measured against the actual rendered DOM on a real device.
 
 ## Recently completed
+
+- **UI pass 4 (multi-commit) -- see `FreikerDialBot_UI_UX_Development_Log.md` for the full self-review:**
+  - Restored a real Home/Landing screen (`Landing.tsx`) separate from the live calling workflow. `Home.tsx` had literally documented itself as *being* the calling workflow, which directly contradicted the product intent -- `Screen` now has both `'home'` (Landing: Welcome Back, queue summary, Continue Session/Upload Contacts, Search/Commands/Settings shortcuts) and `'calling'` (the former merged screen).
+  - Found and fixed real dead buttons via independent review: `OutcomeButtons`' secondary "Call Again" and "Note" buttons called outcome values (`call_again`, `note`) that `mini_app_api._map_outcome()` has no mapping for -- every tap returned a backend error. Replaced "Call Again" with a real "More Info" action (moved off the customer card, now sits below the primary outcome buttons) and removed the redundant broken "Note" button. Separately found `SessionComplete`'s Export button had no `onClick` at all; wired it to the same real `GET /export` `Commands.tsx` uses, via a new shared `lib/download.ts` helper.
+  - `Commands.tsx`: Pause Queue and Export Data were both left disabled despite full backend support. Added `POST /queue/resume` (paired with `isPaused` on `/session/current`) so Pause/Resume is a real toggle; Export downloads the real file via the admin-gated `GET /export`. Added a real typed command input (help, stats, notes, search, pause, resume, export) mapped entirely to existing routes/screens -- no invented backend surface.
+  - Bottom nav: label font 8px→10px, icon 18px→24px, real selected-state highlight (background + border + `aria-current`), touch target 52px→58px.
+  - `CustomerCard`: fixed a genuinely dead `indexLabel` prop (declared, never passed by any caller) by wiring it to real session data.
+  - `Settings.tsx`: Max Call Attempts and Auto Advance controls were below the ~44px mobile touch-target minimum (32px); both fixed.
+  - Backend: 3 new tests (`/queue/resume`, `isPaused`). Full suite: 334 passed throughout every commit. Frontend typecheck, lint, and build all pass after every commit; every commit individually verified on GitHub via the API.
 
 - **UI pass 3 (multi-commit):**
   - Fixed the Call button silently failing to dial on some mobile browsers/WebViews (including Telegram's): `onStartCall` was awaiting the `/call/start` bookkeeping request *before* navigating to `tel:`, which pushes the navigation past the click event's synchronous call stack -- several mobile browsers require `tel:`/`mailto:` navigation to happen within the original user-gesture event or they silently block it. Now dials first, synchronously, then fires bookkeeping afterward without awaiting it.
