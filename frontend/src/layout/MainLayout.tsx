@@ -27,16 +27,15 @@ interface Props {
 }
 
 const NAV_ITEMS: { key: 'home' | 'commands' | 'search'; label: string; icon: string; matches: Screen[] }[] = [
-  { key: 'home', label: 'HOME', icon: '⌂', matches: ['home', 'complete'] },
+  { key: 'home', label: 'HOME', icon: '⌂', matches: ['home', 'calling', 'complete'] },
   { key: 'search', label: 'SEARCH', icon: '⌕', matches: ['search', 'customerDetail'] },
-  { key: 'commands', label: 'CMDS', icon: '▤', matches: ['commands', 'statistics'] },
+  { key: 'commands', label: 'COMMANDS', icon: '▤', matches: ['commands', 'statistics'] },
 ];
 
-// Progress is the calling-workflow anchor, not a global page header --
-// per the UI pass 3 brief ("show progress only on Home / Calling
-// screens"), it takes up sticky vertical space that Search and Commands
-// need for their own content (results, keyboard-safe layout, stats).
-const SCREENS_WITH_PROGRESS: Screen[] = ['home', 'complete'];
+// Progress is the live-calling-workflow anchor, not a global page
+// header -- Landing ('home') has its own queue summary instead, and
+// Search/Commands need the full viewport for their own content.
+const SCREENS_WITH_PROGRESS: Screen[] = ['calling', 'complete'];
 
 export const MainLayout = ({
   children,

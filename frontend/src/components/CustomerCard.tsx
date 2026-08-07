@@ -10,10 +10,6 @@ interface Props {
    * component a `key={customer.id}` at the call site so a genuinely new
    * customer actually remounts it. */
   isLeaving?: boolean;
-  /** Opens CustomerDetail (More Info) for this customer without
-   * leaving the main call workflow -- UI pass 3 requires More Info be
-   * reachable from Home, not only via Search. */
-  onOpenDetail?: () => void;
 }
 
 interface InfoCellProps {
@@ -50,7 +46,7 @@ const InfoCell = ({ icon, label, value, color }: InfoCellProps) => (
  * interface" instruction -- this card is the quick-glance surface, not
  * the exhaustive one.
  */
-export const CustomerCard = ({ customer, indexLabel, isLeaving, onOpenDetail }: Props) => {
+export const CustomerCard = ({ customer, indexLabel, isLeaving }: Props) => {
   const [isEntering, setIsEntering] = useState(true);
 
   useEffect(() => {
@@ -109,25 +105,15 @@ export const CustomerCard = ({ customer, indexLabel, isLeaving, onOpenDetail }: 
         <InfoCell icon="🪙" label="MONTHLY" value={customer.monthlyPayment} color="var(--text-primary)" />
       </div>
 
-      {/* Both phone numbers, each independently tap-to-dial, with More
-          Info on the same row instead of its own full-width button
-          below -- keeps the card from growing taller than it needs to
-          (Home must not require constant scrolling). */}
+      {/* Both phone numbers, each independently tap-to-dial -- More
+          Info now lives in the outcome-button row below the card
+          instead of here (UI pass 4: "Move More Info below the
+          primary outcome buttons"), so this stays a simple, compact
+          phone list. */}
       <div className="mt-3">
-        <div className="mb-1.5 flex items-center justify-between">
-          <p className="font-display text-[8px]" style={{ color: 'var(--text-muted)' }}>
-            📞 PHONE NUMBERS
-          </p>
-          {onOpenDetail && (
-            <button
-              onClick={onOpenDetail}
-              className="font-display text-[8px] underline underline-offset-2"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              MORE INFO →
-            </button>
-          )}
-        </div>
+        <p className="mb-1.5 font-display text-[8px]" style={{ color: 'var(--text-muted)' }}>
+          📞 PHONE NUMBERS
+        </p>
         {customer.phones.length === 0 ? (
           <p className="font-data text-base" style={{ color: 'var(--text-dim)' }}>
             No phone on file

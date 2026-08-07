@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MainLayout } from './layout/MainLayout';
+import { Landing } from './pages/Landing';
 import { Home } from './pages/Home';
 import { Statistics } from './pages/Statistics';
 import { SessionComplete } from './pages/SessionComplete';
@@ -65,10 +66,12 @@ const App = () => {
   // Auto-navigate to the completion screen the moment the backend says
   // the queue is done -- session.completed is real backend state (see
   // MiniAppService.get_current_session's queue_complete finalization),
-  // never a client-side guess. Settings is a drawer now, not a screen,
-  // so it doesn't need to be in this exemption list at all.
+  // never a client-side guess. Landing ('home') is exempted: it's a
+  // resting command-center screen now, not part of the active
+  // workflow, so completing shouldn't yank someone away from it the
+  // way it does from the live 'calling' screen.
   useEffect(() => {
-    const exemptScreens: Screen[] = ['complete', 'statistics', 'commands', 'search', 'customerDetail'];
+    const exemptScreens: Screen[] = ['home', 'complete', 'statistics', 'commands', 'search', 'customerDetail'];
     if (session?.completed && !exemptScreens.includes(screen)) {
       setScreen('complete');
     }
@@ -219,7 +222,7 @@ const App = () => {
         <CustomerDetail
           customerId={selectedCustomerId}
           onBack={() => setScreen(detailReturnScreen)}
-          backLabel={detailReturnScreen === 'home' ? '← BACK TO CALL' : '← BACK TO SEARCH'}
+          backLabel={detailReturnScreen === 'calling' ? '← BACK TO CALL' : '← BACK TO SEARCH'}
         />
       );
     }
@@ -233,7 +236,7 @@ const App = () => {
               const result = await api.callBack();
               if (result.session) applySession(result.session);
               setFromSession(result.customer);
-              setScreen('home');
+              setScreen('calling');
             } catch (err) {
               setActionError(err instanceof ApiError ? err.message : 'Could not requeue those customers.');
             }
@@ -243,31 +246,43 @@ const App = () => {
       );
     }
 
-    // Home IS the calling workflow (per the reference images: the
-    // active customer card, Call button, and outcome buttons all live
-    // on the Home tab itself -- there is no separate Call screen/tab).
+    if (screen === 'calling') {
+      return (
+        <Home
+          session={session}
+          customer={currentCustomer}
+          outcome={outcome}
+          isSubmitting={isSubmitting}
+          durationLabel={timer.getLabel()}
+          onStartCall={onStartCall}
+          onOutcome={handleOutcome}
+          onOpenNotes={() => setShowNotes(true)}
+          hasPendingAdvance={Boolean(pendingAdvance)}
+          onAdvanceNextCustomer={advanceToNextCustomer}
+          onOpenDetail={() => {
+            if (!currentCustomer) return;
+            setSelectedCustomerId(currentCustomer.id);
+            setDetailReturnScreen('calling');
+            setScreen('customerDetail');
+          }}
+        />
+      );
+    }
+
+    // Landing: the real Home screen -- a command center, not the
+    // calling workflow (UI pass 4). Always what 'home' means and
+    // always what the bottom nav's Home button returns to.
     return (
-      <Home
+      <Landing
         session={session}
-        customer={currentCustomer}
-        outcome={outcome}
-        isSubmitting={isSubmitting}
-        durationLabel={timer.getLabel()}
-        onStartCall={onStartCall}
-        onOutcome={handleOutcome}
-        onOpenNotes={() => setShowNotes(true)}
-        hasPendingAdvance={Boolean(pendingAdvance)}
-        onAdvanceNextCustomer={advanceToNextCustomer}
-        onOpenDetail={() => {
-          if (!currentCustomer) return;
-          setSelectedCustomerId(currentCustomer.id);
-          setDetailReturnScreen('home');
-          setScreen('customerDetail');
-        }}
+        onContinueSession={() => setScreen('calling')}
         onOpenUpload={() => {
-          /* No-op: the Upload button is disabled (see Home.tsx) until a
-             real Mini App import endpoint exists. */
+          /* No-op: the Upload button is disabled (see Landing.tsx)
+             until a real Mini App import endpoint exists. */
         }}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSearch={() => setScreen('search')}
+        onOpenCommands={() => setScreen('commands')}
       />
     );
   };

@@ -13,7 +13,6 @@ interface Props {
   onStartCall: () => void;
   onOutcome: (outcome: string) => void;
   onOpenNotes: () => void;
-  onOpenUpload: () => void;
   onOpenDetail: () => void;
   /** True when Auto Advance (Settings) is off and an outcome has just
    * been recorded -- the card below is frozen on the just-completed
@@ -25,12 +24,11 @@ interface Props {
 const CARD_EXIT_ANIMATION_MS = 380;
 
 /**
- * Home is the calling workflow directly -- no separate "Call" screen to
- * navigate to first (per the reference images: the active customer
- * card, Call button, and outcome buttons all live on the Home tab
- * itself, and per the explicit request that Home merge calling and
- * uploading). When there's no active queue, this shows the
- * upload/welcome state instead (image 2's "Welcome Back" reference).
+ * The live calling workflow -- active customer card, Call button,
+ * outcome buttons. Reached only via Landing's "Continue Session"
+ * button (App.tsx's 'calling' screen), not the app's default/launch
+ * screen anymore -- that's Landing.tsx now (UI pass 4: "Do NOT reuse
+ * the queue workflow as the Home screen").
  */
 export const Home = ({
   session,
@@ -41,7 +39,6 @@ export const Home = ({
   onStartCall,
   onOutcome,
   onOpenNotes,
-  onOpenUpload,
   onOpenDetail,
   hasPendingAdvance,
   onAdvanceNextCustomer,
@@ -59,37 +56,21 @@ export const Home = ({
   };
 
   if (!hasQueue) {
+    // Defensive fallback only -- App.tsx only lets the operator reach
+    // this screen via Landing's "Continue Session", which itself only
+    // shows once session.customerCount > 0. This covers the edge case
+    // of the queue completing/emptying out from under an already-open
+    // calling screen before the completed-session redirect fires.
     return (
-      <div className="-mx-4 -mt-4 flex min-h-[70vh] flex-col items-center justify-center gap-6 p-6 text-center retro-starfield">
-        <h1
-          className="font-display text-2xl leading-relaxed"
-          style={{ color: 'var(--text-primary)', textShadow: '0 0 12px rgba(238, 244, 240, 0.6), 0 0 24px rgba(111, 224, 138, 0.3)' }}
-        >
-          WELCOME
-          <br />
-          BACK
-        </h1>
-        <div className="w-full max-w-xs space-y-3">
-          <button
-            onClick={onOpenUpload}
-            disabled
-            title="Not yet available -- import customer data via Telegram chat with the bot for now"
-            className="retro-button min-h-[56px] w-full font-display text-xs disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ background: 'var(--accent-green)', color: 'var(--accent-green-text)', border: '2px solid var(--accent-green-strong)' }}
-          >
-            UPLOAD CONTACTS
-          </button>
-          <p className="font-data text-sm" style={{ color: 'var(--text-dim)' }}>
-            Coming soon — use Telegram chat with the bot for now.
-          </p>
-        </div>
+      <div className="flex min-h-[240px] items-center justify-center p-6 text-center font-data text-lg" style={{ color: 'var(--text-muted)' }}>
+        No active queue.
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <CustomerCard key={customer?.id ?? 'none'} customer={customer} isLeaving={isLeaving} onOpenDetail={customer ? onOpenDetail : undefined} />
+      <CustomerCard key={customer?.id ?? 'none'} customer={customer} isLeaving={isLeaving} />
 
       {hasPendingAdvance ? (
         // Auto Advance is off: the outcome above was already recorded
@@ -107,7 +88,12 @@ export const Home = ({
         <>
           <CallButton label="📞 CALL CUSTOMER" onClick={onStartCall} disabled={!customer?.phone} />
 
-          <OutcomeButtons onOutcome={handleOutcomeClick} disabled={isSubmitting || isLeaving || !customer} />
+          <OutcomeButtons
+            onOutcome={handleOutcomeClick}
+            onMoreInfo={onOpenDetail}
+            disabled={isSubmitting || isLeaving || !customer}
+            moreInfoDisabled={!customer}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <button
