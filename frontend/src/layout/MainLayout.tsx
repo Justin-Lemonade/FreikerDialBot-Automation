@@ -127,21 +127,26 @@ export const MainLayout = ({
           settings control if the top-right gear already handles
           settings"). */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 border-t-2 px-2 pt-2"
+        className="fixed inset-x-0 bottom-0 z-30 border-t-2 px-2 pt-1.5"
         style={{ borderColor: 'var(--border-frame)', background: 'var(--bg-void)', paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
       >
-        <div className="flex items-center gap-1">
+        <div className="flex items-stretch gap-1.5">
           {NAV_ITEMS.map((item) => {
             const isActive = item.matches.includes(activeScreen);
             return (
               <button
                 key={item.key}
                 onClick={navHandlers[item.key]}
-                className={`nav-tab flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 ${isActive ? 'is-active' : ''}`}
-                style={{ color: isActive ? 'var(--accent-green)' : 'var(--text-muted)' }}
+                aria-current={isActive ? 'page' : undefined}
+                className={`nav-tab flex min-h-[58px] flex-1 flex-col items-center justify-center gap-1 rounded-[10px] ${isActive ? 'is-active' : ''}`}
+                style={{
+                  color: isActive ? 'var(--accent-green)' : 'var(--text-muted)',
+                  background: isActive ? 'rgba(111, 224, 138, 0.12)' : 'transparent',
+                  border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'transparent'}`,
+                }}
               >
-                <span className="nav-tab-icon text-lg">{item.icon}</span>
-                <span className="font-display text-[8px]">{item.label}</span>
+                <span className="nav-tab-icon text-2xl leading-none">{item.icon}</span>
+                <span className="font-display text-[10px] tracking-wide">{item.label}</span>
               </button>
             );
           })}
