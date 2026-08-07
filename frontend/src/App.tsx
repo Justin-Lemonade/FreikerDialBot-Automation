@@ -32,6 +32,7 @@ const App = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [detailReturnScreen, setDetailReturnScreen] = useState<Screen>('search');
+  const [pendingSearchQuery, setPendingSearchQuery] = useState<string | null>(null);
   const [pendingAdvance, setPendingAdvance] = useState<PendingAdvance | null>(null);
 
   const { session, loadState, error: sessionError, isStale, lastSyncedAt, refreshSession, applySession } = useSession();
@@ -199,8 +200,14 @@ const App = () => {
     if (screen === 'commands') {
       return (
         <Commands
+          session={session}
           onOpenStatistics={() => setScreen('statistics')}
           onOpenNotes={() => setShowNotes(true)}
+          onOpenSearch={(query) => {
+            setPendingSearchQuery(query ?? null);
+            setScreen('search');
+          }}
+          onSessionChanged={applySession}
         />
       );
     }
@@ -208,6 +215,7 @@ const App = () => {
     if (screen === 'search') {
       return (
         <Search
+          initialQuery={pendingSearchQuery ?? undefined}
           onSelectCustomer={(selected) => {
             setSelectedCustomerId(selected.id);
             setDetailReturnScreen('search');
@@ -281,7 +289,10 @@ const App = () => {
              until a real Mini App import endpoint exists. */
         }}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenSearch={() => setScreen('search')}
+        onOpenSearch={() => {
+          setPendingSearchQuery(null);
+          setScreen('search');
+        }}
         onOpenCommands={() => setScreen('commands')}
       />
     );
@@ -298,7 +309,10 @@ const App = () => {
       customer={currentCustomer}
       onNavigateHome={() => setScreen('home')}
       onNavigateCommands={() => setScreen('commands')}
-      onNavigateSearch={() => setScreen('search')}
+      onNavigateSearch={() => {
+        setPendingSearchQuery(null);
+        setScreen('search');
+      }}
       activeScreen={screen}
       isSettingsOpen={isSettingsOpen}
       onOpenSettings={() => setIsSettingsOpen(true)}

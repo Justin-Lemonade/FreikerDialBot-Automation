@@ -52,6 +52,7 @@ export interface SessionSummary {
   estimatedRemaining: number;
   averageCallTime: string;
   completed: boolean;
+  isPaused: boolean;
   currentCustomer: Customer | null;
   progress: QueueProgress;
 }

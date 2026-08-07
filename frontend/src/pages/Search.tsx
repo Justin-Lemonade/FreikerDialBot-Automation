@@ -1,9 +1,13 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import type { Customer } from '../types';
 
 interface Props {
   onSelectCustomer: (customer: Customer) => void;
+  /** Pre-fills and immediately runs a search -- used by Commands'
+   * typed "search <query>" command so it actually performs the search
+   * instead of just opening an empty Search screen. */
+  initialQuery?: string;
 }
 
 /** Splits `text` into [unmatched, matched, unmatched, ...] segments
@@ -56,8 +60,8 @@ const HighlightedText = ({ text, query }: { text: string; query: string }) => (
  * page for a capability that previously only existed via Telegram's
  * /customer command.
  */
-export const Search = ({ onSelectCustomer }: Props) => {
-  const [query, setQuery] = useState('');
+export const Search = ({ onSelectCustomer, initialQuery }: Props) => {
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [matchedQuery, setMatchedQuery] = useState('');
   const [results, setResults] = useState<Customer[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -85,6 +89,21 @@ export const Search = ({ onSelectCustomer }: Props) => {
       setIsSearching(false);
     }
   };
+
+  // Runs once, only when Commands' "search <query>" actually supplied
+  // something -- a plain nav-tab visit to Search has no initialQuery
+  // and stays empty/interactive as before. Read from a ref (captured
+  // once) rather than depending on the prop directly: this is
+  // deliberately mount-only, not "re-run whenever initialQuery
+  // changes" (a parent re-render with the same prop value shouldn't
+  // re-trigger a fresh network request).
+  const initialQueryRef = useRef(initialQuery);
+  useEffect(() => {
+    const value = initialQueryRef.current;
+    if (value && value.trim()) {
+      runSearch(value);
+    }
+  }, []);
 
   return (
     <div className="space-y-4">

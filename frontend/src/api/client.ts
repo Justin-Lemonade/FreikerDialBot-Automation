@@ -142,7 +142,11 @@ export const api = {
       note,
     }),
 
-  pauseQueue: () => post<{ ok: boolean; paused: boolean }>('/queue/pause'),
+  pauseQueue: () =>
+    post<{ ok: boolean; paused: boolean; session?: import('../types').SessionSummary }>('/queue/pause'),
+
+  resumeQueue: () =>
+    post<{ ok: boolean; paused: boolean; session?: import('../types').SessionSummary }>('/queue/resume'),
 
   callBack: () =>
     post<{ ok: boolean; customer: import('../types').Customer | null; session: import('../types').SessionSummary }>(
@@ -180,4 +184,30 @@ export const api = {
 
   updateSettings: (fields: Partial<import('../types').AppSettings>) =>
     post<{ ok: boolean; settings?: import('../types').AppSettings; error?: string }>('/settings', fields),
+
+  /** GET /export -- admin-only (mini_app_api.py checks security.is_admin
+   * before this runs; a non-admin operator gets a real 403 here, not a
+   * silently-disabled button). Uses a raw fetch instead of request()
+   * because the response is a file: needs the real filename from
+   * Content-Disposition, not just the blob, to save it correctly. */
+  exportData: async (format: 'csv' | 'json' | 'xlsx'): Promise<{ blob: Blob; filename: string }> => {
+    const initData = getInitData();
+    const headers: Record<string, string> = initData ? { Authorization: `tma ${initData}` } : {};
+    const response = await fetch(`${API_BASE_URL}/export?format=${format}`, { headers });
+    if (!response.ok) {
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        body = null;
+      }
+      const message = extractErrorMessage(body) || `Export failed (${response.status})`;
+      throw new ApiError(response.status, message, body);
+    }
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : `export.${format}`;
+    const blob = await response.blob();
+    return { blob, filename };
+  },
 };
