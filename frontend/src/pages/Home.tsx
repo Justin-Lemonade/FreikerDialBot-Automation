@@ -70,7 +70,12 @@ export const Home = ({
 
   return (
     <div className="space-y-4">
-      <CustomerCard key={customer?.id ?? 'none'} customer={customer} isLeaving={isLeaving} />
+      <CustomerCard
+        key={customer?.id ?? 'none'}
+        customer={customer}
+        isLeaving={isLeaving}
+        indexLabel={session ? `${session.currentCustomerIndex}/${session.customerCount}` : undefined}
+      />
 
       {hasPendingAdvance ? (
         // Auto Advance is off: the outcome above was already recorded
