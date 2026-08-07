@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, ApiError } from '../api/client';
 import { downloadBlob } from '../lib/download';
+import { findCommand, parseCommandInput } from '../lib/commandParser';
 import type { SessionSummary } from '../types';
 
 interface Props {
@@ -156,14 +157,11 @@ export const Commands = ({ session, onOpenStatistics, onOpenNotes, onOpenSearch,
   ];
 
   const executeCommand = async (raw: string) => {
-    const trimmed = raw.trim();
-    if (!trimmed || isRunning) return;
+    const { name, arg } = parseCommandInput(raw);
+    if (!name || isRunning) return;
     setIsRunning(true);
-    appendLog(`> ${trimmed}`);
-    const [nameToken, ...rest] = trimmed.split(/\s+/);
-    const name = nameToken.toLowerCase();
-    const arg = rest.join(' ');
-    const command = COMMANDS.find((c) => c.name === name || c.aliases.includes(name));
+    appendLog(`> ${raw.trim()}`);
+    const command = findCommand(COMMANDS, name);
     try {
       if (!command) {
         appendLog(`Unknown command: "${name}". Type "help" for a list.`, true);

@@ -69,7 +69,7 @@ Treat `SECURITY_AUDIT_REPORT.md` as a security snapshot, not as an instruction f
 ## Validation before merge
 
 1. Backend tests: `pytest tests/ -q`
-2. Frontend checks: `cd frontend && npm ci && npx tsc -b --noEmit && npm run build`
+2. Frontend checks: `cd frontend && npm ci && npx tsc -b --noEmit && npm run test && npm run build`
 3. If setup/startup behavior changed: `python doctor.py` and a fresh-clone run of `setup.sh` (or `setup.ps1`) followed by `python bot.py`.
 4. Check `git status` and review the diff.
 5. Confirm no secrets or runtime data are staged.
