@@ -1,456 +1,313 @@
 # PROJECT_STATUS.md
 
-Current snapshot of the repository as of the current main tree.
+Current snapshot of the repository as of the audited `main` tree.
 
 For rules and working conventions, read `AGENTS.md`.
 For technical architecture and endpoint details, read `ARCHITECTURE.md`.
 For security findings, read `SECURITY_AUDIT_REPORT.md`.
 For user-facing overview and setup, read `README.md`.
-For frontend UI/UX pass history and the current design backlog, read `FreikerDialBot_UI_UX_Development_Log.md`.
+For frontend UI/UX pass history and design backlog, read `FreikerDialBot_UI_UX_Development_Log.md`.
 
-## What is already in the repo
+## Source-of-truth rule
 
-- Shared backend wiring exists in `backend.py`.
-- The Telegram bot, queue, session, statistics, importer, and Mini App API all share the same core data model.
-- The importer pipeline covers screenshots, pasted text, JSON, and spreadsheet input.
-- The queue supports deterministic next-customer selection, editing, blacklists, search, history, and admin actions.
-- The Mini App frontend is a real React/TypeScript/Vite app, not a stub.
-- Telegram Mini App authentication and admin authorization logic are implemented in the repo.
-- The repository docs are centered on `AGENTS.md`, `PROJECT_STATUS.md`, `ARCHITECTURE.md`, `SECURITY_AUDIT_REPORT.md`, and `README.md`.
-
-## What was folded into this file from older docs
-
-- The old backlog file is now represented here as the open-issues list below.
-- The old setup-after-Claude notes are now represented here as the security/setup recap below.
-- The old delegation/task notes were removed as a separate file and folded back into this file as the reusable delegation control center below.
-
-## Security and setup recap
-
-- The data-history remediation decision is already completed and should stay treated as a completed decision, not a live task.
-- Mini App auth is mandatory by default on real endpoints.
-- `bot.py` is the single entry point for the stack when the Mini App is enabled.
-- The launcher flag typo was fixed in the earlier setup pass.
-- The dependabot configuration exists and should stay on the repo maintenance path.
-- The Mini App API is still the thin adapter around the shared backend services, not a separate backend.
+GitHub repository contents are authoritative. Documentation describes intent; live code, tests, GitHub PRs, and current commits determine fact. When documentation conflicts with code, verify the code and update the correct canonical document.
 
 # Delegation Control Center
 
-This section is the operational control layer for bounded work that can be delegated to smaller, older, weaker, or less capable coding/review models. It is intentionally kept inside the canonical `PROJECT_STATUS.md`; do not create a separate delegation Markdown file.
-
-## Purpose and authority
-
-The Delegation Control Center tracks:
-
-- who is currently working on what;
-- work already being handled by Claude/frontier-level models;
-- work that is safe to hand to a smaller model;
-- implementation gaps discovered during audits;
-- verification-only work;
-- blocked or decision-dependent work;
-- delegation status, acceptance criteria, and verification evidence;
-- what should happen next.
-
-Repository code is authoritative. Documentation describes intent, but live code and tests determine fact. If this section conflicts with the repository, update this section rather than trusting the stale entry.
-
-This section is not a replacement for the other canonical documents:
-
-- `AGENTS.md` owns agent rules, workflow, validation, commit cadence, and documentation policy.
-- `PROJECT_STATUS.md` owns current state, delegation, open work, decisions, and completion recaps.
-- `ARCHITECTURE.md` owns architecture, module boundaries, API contracts, and ownership rules.
-- `SECURITY_AUDIT_REPORT.md` owns security findings and security posture.
-- `README.md` owns user-facing setup and overview.
-- `FreikerDialBot_UI_UX_Development_Log.md` owns detailed UI/UX pass history and UI design backlog.
+This is the operational control layer for bounded work that can be delegated to smaller, older, weaker, or less capable coding/review models. Do not create a separate delegation Markdown file.
 
 ## Model responsibility rules
 
-The Delegation Handler should default to the smallest model capable of completing the task safely.
+### Claude / frontier / user decision territory
 
-### Claude / frontier model / user decision territory
+Keep these with Claude/frontier-level reasoning or the user unless reduced to a completely mechanical subtask:
 
-Do not delegate these to weaker models unless the task has already been reduced to a completely mechanical subtask with explicit acceptance criteria:
-
-- major UI/UX redesigns;
-- complete screen redesigns or new visual systems;
-- large frontend feature work;
-- major backend features;
+- major UI/UX redesigns or new visual systems;
+- large frontend or backend features;
 - new product workflows;
-- architecture changes;
-- changes to shared service boundaries;
-- database/schema redesigns or migrations with broad consequences;
-- security architecture or authentication redesign;
-- changes to core queue semantics;
-- changes to customer-state ownership;
-- complex importer/prompt redesigns;
-- cross-cutting features spanning multiple subsystems;
+- architecture or shared-service changes;
+- database/schema redesigns or broad migrations;
+- authentication/security architecture;
+- queue/customer-state semantics;
+- complex importer or AI-prompt redesigns;
+- cross-cutting refactors;
 - product decisions or ambiguous requirements;
-- decisions that change existing user-facing behavior materially;
-- resolving conflicts between existing architectural rules;
-- large refactors where the correct target architecture must be decided first.
-
-The weaker model may verify, test, document, or make a small isolated follow-up after Claude has established the design.
+- framework/test-architecture selection;
+- major dependency migrations with breaking changes.
 
 ### Smaller-model territory
 
-These are the default delegation candidates when scope and acceptance criteria are clear:
+Prefer smaller models for:
 
-- small isolated bug fixes;
+- isolated bug fixes;
 - focused regression tests;
-- small test additions for already-defined behavior;
-- verification of an existing endpoint or feature;
-- documentation corrections that follow live code;
-- mechanical documentation updates;
-- small deterministic refactors that do not alter architecture;
-- removal of clearly unused code/imports when verified safe;
-- small validation improvements with existing rules;
-- narrow dependency/configuration audits;
-- CI checks or small maintenance changes with clear expected behavior;
-- checking that an existing feature actually works;
-- reproducing and documenting a suspected bug;
-- small logging/audit improvements with an already-defined event model;
-- bounded backend maintenance;
-- bounded Telegram UI maintenance;
-- bounded Mini App API maintenance;
-- bounded frontend maintenance that does not redesign the UI system.
+- verification/audits;
+- documentation corrections grounded in code;
+- mechanical cleanup;
+- narrow configuration/dependency checks;
+- small deterministic refactors;
+- removing verified stale artifacts;
+- bounded backend/Telegram/Mini App maintenance;
+- reproducing and documenting a suspected bug.
 
-The default rule is: **delegate implementation complexity, not decision-making.**
-
-## Current work ownership
-
-| Area | Default/Current owner | Delegation rule | Source of truth |
-|---|---|---|---|
-| Major UI/UX system and redesign | Claude/frontier | Do not duplicate with smaller model | `FreikerDialBot_UI_UX_Development_Log.md` |
-| Large Mini App features | Claude/frontier | Do not duplicate | `ARCHITECTURE.md`, UI/UX log |
-| Major backend features | Claude/frontier | Do not duplicate | `ARCHITECTURE.md`, this file |
-| Architecture/security decisions | Claude + user | Decision required before delegation | `ARCHITECTURE.md`, `SECURITY_AUDIT_REPORT.md` |
-| Product behavior decisions | User + Claude | Never infer | Decision section below |
-| Small bounded implementation | Delegation Handler → smaller AI | Delegate when acceptance criteria are explicit | This section |
-| Verification/audit work | Delegation Handler → smaller AI | Preferred use of weaker models | Verification queue below |
-| Project-wide status tracking | Delegation Handler | Keep this section current | This section |
+**Delegate implementation complexity, not decision-making.**
 
 ## Delegation state machine
 
-Every delegated item should move through these states:
-
 `DISCOVERED → ASSESSED → READY TO DELEGATE → DELEGATED → IMPLEMENTED → VERIFIED → COMPLETED`
 
-Other valid states are:
+Other valid states: `BLOCKED`, `ESCALATED`, `DEFERRED`, `SUPERSEDED`, `ALREADY HANDLED`.
 
-- `BLOCKED` — cannot proceed without another change or decision.
-- `ESCALATED` — smaller model found a larger problem and stopped.
-- `DEFERRED` — intentionally postponed.
-- `SUPERSEDED` — replaced by another task or design.
-- `ALREADY HANDLED` — another model/pass has already resolved it.
+A task is not complete merely because an AI reports completion; verification evidence is required.
 
-Never mark an item `COMPLETED` merely because an AI says it is finished. Verification evidence is required.
+## Current ownership
+
+| Area | Owner | Rule |
+|---|---|---|
+| Major UI/UX | Claude/frontier | Do not duplicate with smaller models |
+| Major features | Claude/frontier | Do not duplicate |
+| Architecture/security decisions | Claude + user | Decision before delegation |
+| Product behavior | User + Claude | Never infer |
+| Small bounded implementation | Delegation Handler → smaller AI | Explicit acceptance criteria required |
+| Verification/audit | Delegation Handler → smaller AI | Preferred smaller-model workload |
+| Delegation tracking | Delegation Handler | This section is the source of truth |
 
 ## Active delegations
 
-No smaller-model delegation is currently recorded as active in this snapshot. Add an entry here when work is actually handed to another model.
+None recorded as active at the time of this audit.
 
-### Delegation record template
+## Delegation record template
 
 ```text
 DLG-XXX — Short task name
-Status: DELEGATED
-Owner: [model/agent]
-Model class: [small / medium / Claude / human]
-Started: [date]
-Parent finding: [GAP/BUG/VERIFY ID]
-
+Status: READY TO DELEGATE / DELEGATED / IMPLEMENTED / VERIFIED / COMPLETED
+Owner/model:
+Parent finding:
 Problem:
-[exact problem]
-
+Evidence:
 Scope:
-[exact files/components]
-
 Allowed files:
-[list]
-
-Files that must not be changed:
-[list]
-
+Forbidden files:
 Required result:
-[observable result]
-
 Acceptance criteria:
-[checklist]
-
 Verification:
-[exact commands/tests/manual checks]
-
 Dependencies:
-[list]
-
 Escalation condition:
-[when the model must stop]
-
 Commit/PR:
-[after completion]
-
 Last verified:
-[date + evidence]
-
 Notes:
-[short durable notes]
 ```
 
-## Ready-to-delegate queue
+# Repository-wide audit — 2026-08-09
 
-These are bounded tasks that do not require a new product or architectural decision before implementation.
+## Audit baseline
 
-### DLG-CANDIDATE-001 — Restrict CORS to the real Mini App origin
+- Repository: `Justin-Lemonade/FreikerDialBot-Automation`
+- Branch audited: `main`
+- Audited HEAD: `9f89cf9619f8d454268a3e18a88a2cdca5a5b313`
+- Latest commit: `docs: expand delegation control center`
+- GitHub open Issues: **0**
+- GitHub open Pull Requests: **18**, all currently Dependabot dependency/update PRs
+- GitHub code-search index: unavailable/not indexed for this repository, so absence of a search hit is not proof that a pattern is absent.
 
-- Priority: High
-- Difficulty: Small
-- Recommended model: smaller coding model
-- Problem: Mini App responses previously exposed `Access-Control-Allow-Origin: *`; the current security cleanup added the configured allowlist, but this item should only be considered active if live code/audit shows any remaining wildcard path.
-- Scope: `mini_app_api.py` and focused tests only.
-- Required result: configured Mini App origin is used; local development remains functional; no wildcard fallback remains on real API responses.
-- Verification: targeted CORS tests plus full backend test suite.
-- Status: **RECHECK BEFORE DELEGATING** — the current status recap says this security item was already completed. Do not duplicate it without verifying the live code.
+The audit covered the canonical documentation, repository tree, frontend structure, AI parser, CI configuration, security snapshot, dependency manifests, recent commit history, and GitHub issue/PR state. Recent commits were cross-checked against status documentation to detect work that had already been completed but was still described as open.
 
-### DLG-CANDIDATE-002 — Audit-log denied admin attempts
+## Findings: immediate cleanup / safe smaller-model work
 
-- Priority: High
-- Difficulty: Small
-- Recommended model: smaller coding model
-- Problem: this was previously identified as a missing denial audit event.
-- Scope: `admin_commands.py`, `mini_app_api.py`, and focused tests only.
-- Required result: denied Telegram admin actions and denied Mini App export attempts produce the defined `admin_action_denied` event without changing successful-action logging.
-- Verification: targeted denial tests plus full backend suite.
-- Status: **RECHECK BEFORE DELEGATING** — the current status recap says this item was already completed. Do not duplicate it without verifying the live code.
-
-### DLG-CANDIDATE-003 — Focused regression-test maintenance
+### DLG-005 — Remove stale root security-check utility
 
 - Priority: Medium
-- Difficulty: Small
-- Recommended model: smaller coding model
-- Scope: tests only unless a test reveals a clearly isolated defect.
-- Goal: add regression coverage for an already-defined behavior where the missing test is obvious and no framework/product decision is required.
-- Stop condition: if coverage requires selecting a new frontend test framework, redesigning test architecture, or changing behavior, escalate to Claude/user.
-- Verification: relevant tests plus required full-suite checks from `AGENTS.md`.
-- Status: Ready only when a specific missing regression is identified.
+- Owner: smaller coding model
+- File: `_security_check.py`
+- Evidence: the tracked script still scans `BACKLOG.md`, which was intentionally removed during documentation consolidation, and its hard-coded file list no longer represents the current canonical documentation set.
+- Why it matters: it is stale repository tooling and can produce misleading security-check results.
+- Required result: remove the obsolete script if no current workflow invokes it. If any invocation is found, stop and report rather than changing the workflow.
+- Verification: search workflow/scripts for `_security_check.py`; confirm no references; review diff.
+- Status: **READY TO DELEGATE**.
 
-### DLG-CANDIDATE-004 — Documentation/code consistency checks
+### DLG-006 — Remove empty `_install_err.log` artifact
 
-- Priority: Low/Medium
-- Difficulty: Small
-- Recommended model: smaller review model
-- Scope: canonical Markdown files only.
-- Goal: compare documented routes/features/status against live code and identify factual drift.
-- Constraint: do not invent intended behavior; report contradictions for the Delegation Handler to classify.
-- Verification: every correction must be grounded in the current repository.
-- Status: Ready as an audit task.
+- Priority: Low
+- Owner: smaller coding model
+- File: `_install_err.log`
+- Evidence: the tracked file is empty and is a generated-looking root-level log artifact. `AGENTS.md` says generated/runtime artifacts must not be committed.
+- Required result: delete it and confirm no workflow depends on it.
+- Verification: repository search for references; diff review.
+- Status: **READY TO DELEGATE**.
 
-## Discovered gaps / unassigned work
+### DLG-007 — Correct stale frontend-testing documentation
 
-These are known or potentially known issues that are **not automatically delegation candidates**. They must be classified before implementation.
+- Priority: Medium
+- Owner: smaller documentation model
+- Files: `PROJECT_STATUS.md`, `FreikerDialBot_UI_UX_Development_Log.md`, `frontend/vitest.config.ts`
+- Evidence: `frontend/package.json` has `"test": "vitest run"`; `vitest.config.ts` exists; the repository contains Vitest tests; CI runs `npm run test`. However, the UI/UX log still says no frontend test runner exists, and the Vitest config comment still describes the gap as if it were unresolved.
+- Required result: update documentation/comments to state that Vitest is now installed and CI-covered, while accurately describing the current coverage limitations.
+- Constraint: do not expand test architecture or add broad tests.
+- Verification: compare docs with `package.json`, `vitest.config.ts`, CI, and actual test files.
+- Status: **READY TO DELEGATE**.
 
-### GAP-001 — Mini App import flow
+### DLG-008 — Correct README frontend-validation instructions
 
-- Current state: importing remains Telegram-only.
-- Classification: feature gap.
-- Likely owner: Claude/frontier if a new Mini App workflow is required.
-- Reason: this is a product/workflow feature, not a small maintenance task.
-- Smaller AI role: only bounded implementation after the workflow/API design is established.
+- Priority: Low
+- Owner: smaller documentation model
+- File: `README.md`
+- Evidence: README's frontend-only validation example currently lists `npm ci`, typecheck, and build but omits `npm run test`, while `AGENTS.md` and CI require the Vitest test step.
+- Required result: add the current frontend test command without duplicating the full validation policy.
+- Status: **READY TO DELEGATE**.
 
-### GAP-002 — Frontend automated testing
+## Findings: verification / audit work
 
-- Current state: frontend test coverage is sparse/absent and there is no frontend test runner configured in the current status snapshot.
-- Classification: tooling/architecture decision.
-- Likely owner: Claude + user decision first.
-- Reason: selecting and integrating a frontend test framework is broader than a simple test addition.
-- Smaller AI role: later, once the framework and test conventions are established, individual test cases can be delegated.
+### VERIFY-009 — Triage all open Dependabot PRs
 
-### GAP-003 — Settings placeholders
+- Priority: High
+- Owner: smaller review model for mechanical triage; Claude for major migrations
+- Current state: 18 open Dependabot PRs exist.
+- Safe/minor candidates to review first: #1 setup-python 5→7, #2 setup-node 4→7, #3 python-telegram-bot 22.8, #4 checkout 4→7, #6 openpyxl, #8 Vite 8.1.4→8.2.0, #9 python-dotenv, #13 oxlint, #14 react-dom patch, #15 React patch, #16 plugin-react patch, #17 @types/node, #18 autoprefixer.
+- Major/high-risk migrations requiring Claude review before merge: #5 OpenAI 1→2, #7 pytest 8→9, #10 pytest-asyncio 0→1, #11 Tailwind 3→4, #12 TypeScript 6→7.
+- Important evidence: PR #5 changes only the OpenAI version constraint; `ai_parser.py` uses `AsyncOpenAI`, `RateLimitError`, `APIError`, and `chat.completions.create`, so the migration requires actual test/review rather than assuming a dependency-only change is safe. PR #11 is a Tailwind major migration and removes the Tailwind 3 dependency tree while the current repo still has a Tailwind 3-style `tailwind.config.js` and `postcss.config.js`; it is not a mechanical merge.
+- No review submissions were found on the inspected major PRs #5, #11, and #12.
+- Status: **READY AS A VERIFICATION/REVIEW TASK; do not blindly merge dependency PRs.**
 
-- Current state: `Settings.tsx` still contains honest disabled placeholders for Phone Handling, Display, Queue, Search, Language, Accent Color, Animation Intensity, and Version Info.
-- Classification: feature/UI work.
-- Likely owner: Claude/frontier for the actual UX/system design.
-- Smaller AI role: only after the behavior and UI contract are defined; then individual wiring tasks may be delegated.
+### VERIFY-010 — Recheck CI/action dependency state
 
-### GAP-004 — Landing full-screen sizing
+- Priority: Medium
+- Evidence: current `.github/workflows/ci.yml` still uses `actions/checkout@v4`, `actions/setup-python@v5`, and `actions/setup-node@v4`, while open Dependabot PRs propose newer major versions.
+- Required result: determine whether each action PR is compatible with current CI and whether any PR is stale/conflicting.
+- Status: **READY TO DELEGATE as review only.**
 
-- Current state: Landing uses `calc(100dvh - 8.5rem)`, which is an approximation rather than a measurement of actual rendered app-bar/bottom-nav dimensions on real devices.
-- Classification: bounded UI maintenance, but may require device-specific validation.
-- Likely owner: smaller AI for investigation/verification; Claude only if the fix requires a broader layout redesign.
-- Next action: reproduce on representative mobile/Telegram WebView environments before changing the layout system.
+### VERIFY-011 — Screen-by-screen responsive Mini App audit
 
-### GAP-005 — Paid write path
+- Priority: High
+- Owner: Claude/frontier for design changes; smaller model may perform bounded reproduction/measurement only
+- Evidence: the UI/UX log explicitly records that the dedicated responsive audit was missed in Pass 4. Landing still uses an approximate `calc(100dvh - 8.5rem)` height.
+- Required result: systematic narrow/short viewport audit before altering layout architecture.
+- Status: **CLAUDE-LED audit; smaller model may gather measurements only.**
 
-- Current state: no final workflow decision.
-- Classification: product decision.
-- Owner: user + Claude.
-- Smaller AI: not eligible until the write semantics are explicitly defined.
+### VERIFY-012 — Recheck auth boundary when routes change
 
-### GAP-006 — Fully blacklisted customer queue eligibility
+- Priority: Medium
+- Evidence: `SECURITY_AUDIT_REPORT.md` identifies `_API_PATHS` as a security boundary and requires every new route to be added to the auth gate.
+- Required result: every future route change must be reviewed against authentication and authorization expectations.
+- Status: **ONGOING SECURITY CONTROL, not a one-off bug.**
 
-- Current state: behavior requires a deliberate product rule.
-- Classification: product/business-rule decision.
-- Owner: user + Claude.
-- Smaller AI: not eligible until the rule is chosen.
+## Findings: known product/architecture work that must not be delegated yet
 
-### GAP-007 — Session timing model
+### GAP-013 — Mini App import flow
 
-- Current state: decision remains between wall-clock timing and idle-aware timing.
-- Classification: product/statistics decision.
-- Owner: user + Claude.
-- Smaller AI: not eligible until the desired semantics are chosen.
+Importing is still Telegram-side. A Mini App import workflow is a product/workflow feature and must be designed by Claude/user first. Smaller models may implement bounded pieces after the API/workflow contract exists.
+
+### GAP-014 — Settings functionality
+
+The Settings page still contains deliberately disabled placeholders for several categories, including Phone Handling, Display, Queue, Search, Language, Accent Color, Animation Intensity, and parts of Admin/Diagnostics. These are not bugs merely because they are disabled. Implementing them requires UX/product decisions; keep major work with Claude.
+
+### GAP-015 — Pre-ready N-deep customers
+
+The UI/UX log identifies this as the largest remaining Settings/backend capability gap. It requires defining the desired queue semantics before implementation. Claude/user first; smaller model only for subsequent bounded wiring/tests.
+
+### GAP-016 — Paid write path
+
+The real `Paid` workflow and whether it exists in Telegram, Mini App, or both remain product decisions. Do not delegate implementation before semantics are defined.
+
+### GAP-017 — Fully blacklisted customer eligibility
+
+The queue behavior for a customer whose every phone number is blacklisted remains a business-rule decision. Do not let a smaller model invent the rule.
+
+### GAP-018 — Session timing semantics
+
+Wall-clock versus idle-aware timing remains a product/statistics decision. Do not implement without an explicit choice.
+
+### GAP-019 — Major dependency migrations
+
+OpenAI v2, pytest 9, pytest-asyncio 1.x, Tailwind 4, and TypeScript 7 require Claude-level review because they cross API/configuration or tooling boundaries. Smaller models may later handle isolated follow-up fixes/tests after the migration design is established.
+
+## Findings: documentation drift discovered during audit
+
+### STATE-020 — UI testing documentation is stale
+
+The repository now has Vitest, a dedicated `frontend/vitest.config.ts`, a `test` package script, CI's Unit tests step, and recent commits adding 22 frontend tests. The UI/UX log and the comment inside `vitest.config.ts` still describe the frontend test runner as absent. This must be corrected so future agents do not make a duplicate test-runner task.
+
+### STATE-021 — Status snapshot must distinguish current CI from historical test counts
+
+Recent history records backend counts of 330, 332, 334, 342, and 348 as successive milestones. These are historical verification results, not necessarily the current count. Future status updates should record the commit and exact current verification result together.
+
+### STATE-022 — Open Dependabot work is not represented in project status
+
+The previous delegation template contained no current GitHub PR inventory. The 18 open dependency PRs are now explicitly tracked here so they cannot be mistaken for unowned or nonexistent work.
+
+## Findings: security posture
+
+The security audit remains substantially resolved: Mini App Telegram auth, shared admin authorization, admin-gated export, restricted CORS, and denied-admin audit logging are implemented. The security document still correctly identifies three ongoing controls: new routes must join the auth boundary, the anonymous development escape hatch must never be enabled outside local testing, and future route growth must be checked for auth/authorization drift.
+
+No new confirmed security vulnerability was established by this audit. The stale `_security_check.py` utility is a maintenance/documentation problem, not evidence of a current breach.
+
+## Findings: GitHub work state
+
+- Open Issues: none.
+- Open PRs: 18, all Dependabot dependency/update PRs.
+- No active non-Dependabot implementation PR was found during this audit.
+- Major dependency PRs should not be merged solely because they are generated by Dependabot.
+- PR #5 is explicitly open and unmerged; GitHub reports it as not mergeable in its current state, and it has no submitted reviews.
 
 ## Verification-only queue
 
-Verification tasks are preferred delegation work when implementation is unnecessary.
+- Verify CORS has no wildcard fallback.
+- Verify denied admin attempts remain audit-logged.
+- Verify every real Mini App API endpoint is authenticated/authorized as required.
+- Verify `bot.py` remains the single entrypoint when Mini App is enabled.
+- Verify Mini App API remains a thin adapter over shared backend services.
+- Verify frontend placeholders remain honest.
+- Verify current Vitest tests and CI remain aligned.
+- Verify documentation claims against live code after substantial passes.
+- Triage open Dependabot PRs before assigning any dependency work.
 
-- VERIFY-001 — Confirm current CORS behavior matches configured allowed origins and has no wildcard fallback.
-- VERIFY-002 — Confirm denied admin attempts are audit-logged under the intended event type.
-- VERIFY-003 — Confirm every real Mini App API route still requires Telegram authentication/admin authorization where required.
-- VERIFY-004 — Confirm `bot.py` remains the single entry point when the Mini App is enabled.
-- VERIFY-005 — Confirm Mini App API remains a thin adapter and does not duplicate queue/session/statistics business logic.
-- VERIFY-006 — Confirm current frontend placeholder controls remain honest and do not imply unsupported functionality.
-- VERIFY-007 — Re-run backend tests and frontend typecheck/build after a Claude UI or architecture pass and record the exact results.
-- VERIFY-008 — Check documentation claims against live code after a significant implementation pass.
+## Escalation rules
 
-A verification model must not turn an audit finding into an unapproved feature implementation. If it finds a defect, report it with evidence and escalate/classify it.
-
-## Deferred / blocked / decision-dependent work
-
-Do not place these into the smaller-model implementation queue until the required decision is made:
-
-- Paid write path and whether it exists in Telegram, Mini App, or both.
-- Treatment of customers whose every phone number is blacklisted.
-- Wall-clock versus idle-aware session timing.
-- Frontend test-framework selection and testing architecture.
-- Any major Mini App import workflow design.
-- Any major UI redesign or new visual system.
-- Any new shared backend architecture.
-
-## Escalation rules for smaller models
-
-A smaller model must stop and report rather than expanding scope when it encounters:
-
-- a product decision not explicitly stated in the task;
-- conflicting requirements;
-- a security-sensitive design choice;
-- a database/schema migration requirement;
-- an API contract change not explicitly specified;
-- a change to queue/customer-state semantics;
-- architecture spanning multiple major modules;
-- a broad UI/UX redesign;
-- a need to select a new framework/tooling architecture;
-- a failing test that indicates a deeper unrelated defect;
-- an unexpected dependency on a component outside the allowed scope;
-- acceptance criteria that cannot be determined from the task;
-- a request to modify files marked forbidden by the delegation record.
+A smaller model must stop and report when it encounters a product decision, security-sensitive design choice, schema migration, unspecified API contract change, queue/customer-state semantic change, broad UI redesign, framework-selection decision, unrelated failing test, or any requirement outside its explicit task scope.
 
 The correct response to an escalation is evidence, not improvisation.
 
-## Completion and verification protocol
+## Completion protocol
 
-A delegation is complete only when all applicable conditions are satisfied:
+A delegated task is complete only when scope remained bounded, required checks pass, the diff was reviewed, no runtime/generated/secrets were introduced, the commit is focused, and the resulting GitHub state is independently verified. New follow-up findings become separate records rather than silently expanding the completed task.
 
-1. Scope remained bounded.
-2. Required files were the only files changed, unless an explicitly justified dependency was necessary.
-3. Tests/checks required by the task pass.
-4. The broader required validation from `AGENTS.md` has been run when applicable.
-5. The diff was reviewed.
-6. No secrets/runtime/generated files were introduced.
-7. The commit is small and focused.
-8. The resulting commit is verified on GitHub rather than trusting only a local push result.
-9. Any newly discovered follow-up work is recorded as a separate finding rather than silently expanding the completed task.
-10. The delegation record is updated with the commit/PR and verification evidence.
+## Recently completed / already handled
 
-## Delegation history
-
-Keep completed delegation records compact. Preserve the durable facts needed to understand what happened and avoid repeating work.
-
-```text
-DLG-XXX
-Task:
-Owner/model:
-Result: COMPLETED / ESCALATED / SUPERSEDED
-Commit/PR:
-Verification:
-Follow-up findings:
-Date:
-```
-
-## Current recommended delegation strategy
-
-1. Prefer verification and small isolated maintenance work for weaker models.
-2. Do not duplicate Claude's active UI/UX or major feature work.
-3. Before delegating any item, verify that the current code has not already resolved it.
-4. Give the smaller model a narrow prompt derived from a delegation record in this section.
-5. Require explicit acceptance criteria and verification.
-6. Escalate decisions rather than letting a weaker model invent behavior.
-7. After the smaller model finishes, independently verify the result and update this section.
-8. Keep this section current enough that a new AI can understand ownership and avoid duplicate work without needing the entire conversation history.
-
-## Delegation audit metadata
-
-- Last delegation-control update: 2026-08-09
-- Repository: `Justin-Lemonade/FreikerDialBot-Automation`
-- Branch: `main`
-- Documentation authority: `AGENTS.md` + live repository code
-- Current delegation section was rebuilt from the existing `PROJECT_STATUS.md`, `AGENTS.md`, and `ARCHITECTURE.md`.
-- Known stale-risk: entries marked **RECHECK BEFORE DELEGATING** must be verified against live code before assignment.
-- Next full delegation audit: after the next substantial Claude pass or when the repository state changes materially.
-
-## What is currently open
-
-- The Mini App still has no import flow of its own; importing remains Telegram-only.
-- Frontend test coverage is still sparse or absent -- there is no frontend test runner configured yet (no vitest/jest). All frontend changes are validated by typecheck + lint + build + manual diff review, not automated frontend tests. Setting up a frontend test framework is its own decision, flagged as the top open item in `FreikerDialBot_UI_UX_Development_Log.md`.
-- Settings > Phone Handling (primary-number preference, quick switching), Display, Queue (pre-ready count, active-queue/new-contacts ordering), most of Search, Language (Russian/Tajik), Accent Color, Animation Intensity, and Version Info are still unimplemented placeholders in `Settings.tsx` (honestly disabled, not faked) -- see the Settings section list there for the full current set.
-- Landing's "full-screen" height (`calc(100dvh - 8.5rem)`) is an approximation of the app bar + bottom nav height, not measured against the actual rendered DOM on a real device.
-
-## Recently completed
-
-- **Security backlog cleanup:**
-  - CORS: `Access-Control-Allow-Origin: *` replaced with a real allowlist (`Settings.mini_app_allowed_origins` -- the configured `mini_app_url`, the Vite dev server, plus an optional `MINI_APP_EXTRA_ALLOWED_ORIGINS` env var). 8 new tests.
-  - Denied admin attempts (reset/clear/summary/export on Telegram, `/export` on the Mini App) are now audit-logged under a new `admin_action_denied` event_type, not just successful ones. 7 new tests.
-  - Full suite: 348 passed.
-
-- **UI pass 4 (multi-commit) -- see `FreikerDialBot_UI_UX_Development_Log.md` for the full self-review:**
-  - Restored a real Home/Landing screen (`Landing.tsx`) separate from the live calling workflow. `Home.tsx` had literally documented itself as *being* the calling workflow, which directly contradicted the product intent -- `Screen` now has both `'home'` (Landing: Welcome Back, queue summary, Continue Session/Upload Contacts, Search/Commands/Settings shortcuts) and `'calling'` (the former merged screen).
-  - Found and fixed real dead buttons via independent review: `OutcomeButtons`' secondary "Call Again" and "Note" buttons called outcome values (`call_again`, `note`) that `mini_app_api._map_outcome()` has no mapping for -- every tap returned a backend error. Replaced "Call Again" with a real "More Info" action (moved off the customer card, now sits below the primary outcome buttons) and removed the redundant broken "Note" button. Separately found `SessionComplete`'s Export button had no `onClick` at all; wired it to the same real `GET /export` `Commands.tsx` uses, via a new shared `lib/download.ts` helper.
-  - `Commands.tsx`: Pause Queue and Export Data were both left disabled despite full backend support. Added `POST /queue/resume` (paired with `isPaused` on `/session/current`) so Pause/Resume is a real toggle; Export downloads the real file via the admin-gated `GET /export`. Added a real typed command input (help, stats, notes, search, pause, resume, export) mapped entirely to existing routes/screens -- no invented backend surface.
-  - Bottom nav: label font 8px→10px, icon 18px→24px, real selected-state highlight (background + border + `aria-current`), touch target 52px→58px.
-  - `CustomerCard`: fixed a genuinely dead `indexLabel` prop (declared, never passed by any caller) by wiring it to real session data.
-  - `Settings.tsx`: Max Call Attempts and Auto Advance controls were below the ~44px mobile touch-target minimum (32px); both fixed.
-  - Backend: 3 new tests (`/queue/resume`, `isPaused`). Full suite: 334 passed throughout every commit. Frontend typecheck, lint, and build all pass after every commit; every commit individually verified on GitHub via the API.
-
-- **UI pass 3 (multi-commit):**
-  - Fixed the Call button silently failing to dial on some mobile browsers/WebViews (including Telegram's): `onStartCall` was awaiting the `/call/start` bookkeeping request *before* navigating to `tel:`, which pushes the navigation past the click event's synchronous call stack -- several mobile browsers require `tel:`/`mailto:` navigation to happen within the original user-gesture event or they silently block it. Now dials first, synchronously, then fires bookkeeping afterward without awaiting it.
-  - `mini_app_api._customer_payload` now returns `phones: [{number, isBlacklisted}]` for every number on file (previously collapsed to a single first-non-blacklisted `phone` string, which is kept for backward compatibility). `CustomerCard` (the live Home workflow card) and `CustomerDetail` both show every number as its own tap-to-dial link.
-  - `CustomerCard` gained a "MORE INFO" button so `CustomerDetail` is reachable from the live call workflow, not only via Search. `CustomerDetail` now takes a `backLabel`/dynamic `onBack` so it returns to whichever screen opened it.
-  - `ProgressHeader` compacted to a single thin row (count + segments + percent); dropped the "CUSTOMER PROGRESS" label row and the derived "~X REMAINING" estimate line (never a real backend value). `MainLayout` now only renders it on Home/calling-related screens (`home`, `complete`), not on Search/Commands/Statistics.
-  - Fixed the customer-card slide animation clipping its own notched corners mid-transition: `<main>` (`overflow-y: auto`) was implicitly getting `overflow-x: auto` per the CSS overflow spec, hard-clipping the card as it translated 140% off-screen. Made `overflow-x: hidden` explicit and shortened the slide distance with an earlier opacity fade.
-  - Search is now keyboard-safe on mobile (`inputMode="search"`, `enterKeyHint="search"`, autocomplete/autocorrect disabled, scrolls the input into view on focus so results aren't hidden behind the keyboard) and highlights the matched substring in each result's name/loan number/phone, computed client-side with the same case-insensitive substring test `Database.search_customers` actually uses.
-  - `Settings.tsx` rebuilt into the UI pass 3 brief's categories (Calling Behavior, Phone Handling, Display, Queue, Search, Appearance, Language, Admin/Diagnostics). Added two more real rows: Backend Connectivity and Sync Status, now read from `useSession`'s `isStale`/new `lastSyncedAt` field instead of a decorative indicator. Every other row in each category is an honest, disabled placeholder labeled with what it will do, grouped correctly so wiring the real control later doesn't require reworking the screen.
-  - Added the commit/push cadence rule to `AGENTS.md`.
-  - Backend: 4 new tests (2 for the `phones` field, unrelated Max Call Attempts/Settings tests from the prior pass unaffected). Full suite: 332 passed throughout. Frontend typecheck, lint, and build all pass after every commit.
-
-- **Max Call Attempts** is now a real, backend-enforced setting rather than a placeholder: `customers.attempt_count` tracks how many times a customer has been marked "Didn't Answer" (`QueueEngine.apply_action`), and `QueueEngine.restart_call_later` ("Call Back") excludes customers who have reached the configured cap instead of requeuing them forever. Configured via `GET/POST /settings` (generic `app_settings` key/value table -- see `database.py`), wired into `Settings.tsx` via `useAppSettings.ts`.
-- **Auto Advance** is real: when off, completing an outcome no longer immediately swaps in the next customer -- the card stays frozen on the just-completed customer until the operator taps "Next Customer" (`App.tsx`'s `pendingAdvance` state). The backend already returned the next customer in the same response either way; this only changes when the frontend displays it.
+- CORS wildcard replaced with an allowlist; 8 tests added.
+- Denied admin actions now produce `admin_action_denied`; 7 tests added.
+- Real Home/Landing screen split from calling workflow.
+- Dead Call Again/Note controls removed/replaced.
+- Pause/Resume and real Export wired into Mini App Commands.
+- SessionComplete Export fixed.
+- CustomerCard index label and phone-number display fixed.
+- Max Call Attempts and Auto Advance became real backend-enforced settings.
+- Frontend Vitest test runner and 22 initial tests were added; CI now runs Unit tests.
+- CI Node was raised from 20 to 22 after jsdom's actual runtime requirement was discovered.
+- Repository stabilization/setup/doctor tooling was completed and fresh-clone behavior verified.
+- CORS and denied-admin security fixes were completed and documented.
 
 ## Decisions still needed
 
-These are product decisions, not simple bugs:
+- Paid write path and interface(s).
+- Fully blacklisted customer queue eligibility.
+- Wall-clock versus idle-aware session timing.
+- Exact Settings feature priorities/semantics.
+- Whether and how the Mini App should gain its own import workflow.
+- Whether major dependency upgrades are worth the migration cost.
 
-- The real `Paid` write path and whether it should exist in both Telegram and the Mini App.
-- What should happen to customers whose every phone number is blacklisted.
-- Whether session duration should stay as wall-clock time or become idle-aware.
+## Current recommended next actions
 
-## User-facing prompts / options
+1. Delegate DLG-005 through DLG-008 as small cleanup/documentation tasks.
+2. Have a smaller model perform VERIFY-009/010 dependency-PR triage without merging major migrations.
+3. Have Claude perform the dedicated responsive UI audit and decide the next Settings/UI pass.
+4. Keep product decisions above out of the smaller-model queue until explicitly resolved.
+5. After the next Claude pass, run a fresh repository-wide delegation audit and reconcile this file against the new HEAD.
 
-If the next pass is meant to answer open product questions, the shortest choices are:
+## Delegation audit metadata
 
-- **Paid:** add a real write path now, or keep it disabled until the workflow is defined.
-- **Blacklist-by-phone:** keep it separate from customer-level blacklisting, or redefine queue eligibility to treat fully blacklisted customers as uncallable.
-- **Session timing:** keep the current wall-clock measurement, or move to an idle-aware model.
-
-## What to check next
-
-1. Re-run the backend test suite.
-2. Run the frontend typecheck and build.
-3. Pick the next item from the open list above.
-4. Keep future documentation inside the canonical Markdown files unless a tool explicitly requires another filename.
+- Audit date: 2026-08-09
+- Audited HEAD: `9f89cf9619f8d454268a3e18a88a2cdca5a5b313`
+- Last control-center template update: 2026-08-09
+- Current repository has 18 open Dependabot PRs and no open Issues.
+- Known stale documentation found: UI/UX testing gap and Vitest config comment.
+- Known stale repository artifacts found: `_security_check.py`, `_install_err.log`.
+- Next full audit trigger: after the next substantial Claude pass, dependency migration, or architecture change.
