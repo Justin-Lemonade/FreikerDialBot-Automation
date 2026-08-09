@@ -944,3 +944,81 @@ def test_customer_payload_skips_blacklisted_phone(api_server):
     # The payload should show the non-blacklisted phone, not the blacklisted one
     assert customer["phone"] == "+15550009992"
     assert customer["phone"] != "+15550009991"
+
+
+def _request_with_origin(server, path: str, origin: str | None, service=None):
+    """Raw request (bypassing _request_json) so the test can set an
+    Origin header and inspect the response's own headers -- what CORS
+    restriction actually needs to verify."""
+    host, port = server.server_address
+    headers = {}
+    if origin is not None:
+        headers["Origin"] = origin
+    if service is not None:
+        fields = {
+            "query_id": "test-query",
+            "user": json.dumps({"id": 900000001, "first_name": "Test"}, separators=(",", ":")),
+            "auth_date": str(int(time.time())),
+        }
+        headers["Authorization"] = f"tma {_sign_init_data(service.bot_token, fields)}"
+    req = urllib.request.Request(f"http://{host}:{port}{path}", headers=headers)
+    with urllib.request.urlopen(req, timeout=5) as response:
+        return response, response.headers.get("Access-Control-Allow-Origin")
+
+
+class TestCorsRestriction:
+    """Access-Control-Allow-Origin used to be an unconditional '*'.
+    settings.mini_app_allowed_origins (config.py) now scopes it to the
+    Mini App's own real URL plus the Vite dev server -- these tests
+    verify the header is only ever echoed for an allowed Origin, and
+    omitted (not '*', not silently allowed) for anything else."""
+
+    def test_allowed_origin_is_echoed_back(self, api_server):
+        server, service = api_server
+        # http://localhost:5173 (the Vite dev server) is always in the
+        # default allowlist regardless of mini_app_url -- see
+        # Settings.mini_app_allowed_origins.
+        _response, cors_header = _request_with_origin(server, "/session/current", "http://localhost:5173", service=service)
+        assert cors_header == "http://localhost:5173"
+
+    def test_disallowed_origin_gets_no_cors_header(self, api_server):
+        server, service = api_server
+        _response, cors_header = _request_with_origin(server, "/session/current", "http://evil.example.com", service=service)
+        assert cors_header is None
+
+    def test_no_origin_header_gets_no_cors_header(self, api_server):
+        server, service = api_server
+        _response, cors_header = _request_with_origin(server, "/session/current", None, service=service)
+        assert cors_header is None
+
+    def test_cors_header_is_never_a_wildcard(self, api_server):
+        server, service = api_server
+        _response, cors_header = _request_with_origin(server, "/session/current", "http://localhost:5173", service=service)
+        assert cors_header != "*"
+
+
+class TestAllowedOriginsSetting:
+    def test_defaults_include_the_vite_dev_server(self):
+        settings = Settings(telegram_bot_token=TEST_BOT_TOKEN, openai_api_key=None)
+        assert "http://localhost:5173" in settings.mini_app_allowed_origins
+        assert "http://127.0.0.1:5173" in settings.mini_app_allowed_origins
+
+    def test_includes_the_configured_mini_app_url(self):
+        settings = Settings(
+            telegram_bot_token=TEST_BOT_TOKEN,
+            openai_api_key=None,
+            mini_app_url="https://example.ngrok-free.app/some/path",
+        )
+        assert "https://example.ngrok-free.app" in settings.mini_app_allowed_origins
+
+    def test_includes_extra_configured_origins(self):
+        settings = Settings(
+            telegram_bot_token=TEST_BOT_TOKEN,
+            openai_api_key=None,
+            mini_app_extra_allowed_origins=frozenset({"https://custom.example.com"}),
+        )
+        assert "https://custom.example.com" in settings.mini_app_allowed_origins
+
+    def test_does_not_include_an_arbitrary_origin(self):
+        settings = Settings(telegram_bot_token=TEST_BOT_TOKEN, openai_api_key=None)
+        assert "https://evil.example.com" not in settings.mini_app_allowed_origins

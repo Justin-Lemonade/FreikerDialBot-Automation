@@ -475,9 +475,28 @@ _API_PATHS = frozenset({
 class MiniAppRequestHandler(BaseHTTPRequestHandler):
     service: MiniAppService | None = None
 
+    def _cors_origin(self) -> str | None:
+        """The Origin to echo back in Access-Control-Allow-Origin, or
+        None to omit the header entirely (the browser then blocks the
+        response from being read cross-origin, same as a plain 404
+        would for CORS purposes). Only origins in
+        settings.mini_app_allowed_origins are ever echoed -- see that
+        property's docstring for why '*' was removed."""
+        if self.service is None:
+            return None
+        origin = self.headers.get("Origin")
+        if origin and origin in self.service.settings.mini_app_allowed_origins:
+            return origin
+        return None
+
+    def _send_cors_header(self) -> None:
+        origin = self._cors_origin()
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._send_cors_header()
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
@@ -720,7 +739,7 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", f"{content_type}; charset=utf-8")
                 self.send_header("Content-Length", str(filepath.stat().st_size))
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._send_cors_header()
                 self.end_headers()
                 self.wfile.write(f.read())
                 return True
@@ -789,7 +808,7 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._send_cors_header()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -798,7 +817,7 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._send_cors_header()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
