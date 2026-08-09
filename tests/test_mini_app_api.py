@@ -395,6 +395,35 @@ def test_export_requires_admin_authorization(authenticated_api_server):
     assert exc_info.value.code == 403
 
 
+def test_denied_export_is_audit_logged(authenticated_api_server):
+    """Mirrors admin_commands.py's own denied-attempt logging for the
+    Telegram bot's /export -- the Mini App's export gate previously
+    only logged a successful export, leaving repeated unauthorized
+    attempts from the Mini App side with no trace at all."""
+    server, service = authenticated_api_server
+    host, port = server.server_address
+    fields = {
+        "query_id": "q",
+        "auth_date": str(int(time.time())),
+        "user": json.dumps({"id": 2020202, "first_name": "StillNotAdmin"}, separators=(",", ":")),
+    }
+    init_data = _sign_init_data(service.bot_token, fields)
+    req = urllib.request.Request(
+        f"http://{host}:{port}/export?format=csv",
+        headers={"Authorization": f"tma {init_data}"},
+    )
+    with pytest.raises(urllib.error.HTTPError):
+        urllib.request.urlopen(req, timeout=5)
+
+    with service.database.connect() as conn:
+        latest_event = conn.execute(
+            "SELECT event_type, telegram_user_id, notes FROM customer_events ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert latest_event["event_type"] == "admin_action_denied"
+    assert latest_event["telegram_user_id"] == 2020202
+    assert latest_event["notes"] == "export"
+
+
 def test_export_succeeds_for_authenticated_admin_and_is_audited(authenticated_api_server):
     server, service = authenticated_api_server
     service.database.insert_customers(

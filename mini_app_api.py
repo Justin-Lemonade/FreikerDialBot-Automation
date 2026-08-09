@@ -684,6 +684,15 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
             return True
         if path == "/export" and method == "GET":
             if not security.is_admin(telegram_user_id, self.service.settings):
+                # Same audit trail as the Telegram bot's own admin gate
+                # (admin_commands.py's _deny) -- previously only a
+                # successful export was logged, leaving no trace of
+                # repeated unauthorized attempts from the Mini App side.
+                self.service.statistics.record_event(
+                    "admin_action_denied",
+                    telegram_user_id=telegram_user_id,
+                    notes="export",
+                )
                 self._json(403, {"error": "Admin authorization required"})
                 return True
             export_format = (query.get("format") or ["csv"])[0].lower()

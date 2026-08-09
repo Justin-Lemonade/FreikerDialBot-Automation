@@ -29,6 +29,7 @@ EVENT_TYPES = {
     "queue_completed",
     "queue_call_back_started",
     "admin_action",
+    "admin_action_denied",
 }
 
 

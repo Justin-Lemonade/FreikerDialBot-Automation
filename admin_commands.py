@@ -42,18 +42,28 @@ def is_authorized(update: Update, settings: Settings) -> bool:
     return security.is_admin(user.id if user else None, settings)
 
 
-async def _deny(update: Update) -> None:
+async def _deny(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str) -> None:
+    """Denies the action AND logs it -- the same customer_events audit
+    trail _record_admin_action writes to for successful admin actions,
+    just a different event_type. Previously only successful actions
+    were logged (see the old docstring on _record_admin_action), which
+    meant repeated unauthorized attempts left no trace at all."""
+    _statistics_from_context(context).record_event(
+        "admin_action_denied",
+        telegram_user_id=update.effective_user.id if update.effective_user else None,
+        notes=action,
+    )
     await update.effective_message.reply_text("Permission denied.")
 
 
 def _record_admin_action(
     statistics: StatisticsEngine, action: str, telegram_user_id: int | None
 ) -> None:
-    """Audit trail for admin-level actions (reset/clear/export), reusing
-    the same customer_events history everything else already writes to
-    -- no new table, no new mechanism, just a new event_type. Logged
-    only on successful completion of the action, not on denied attempts
-    (see BACKLOG.md for that as a follow-up)."""
+    """Audit trail for successful admin-level actions (reset/clear/export),
+    reusing the same customer_events history everything else already
+    writes to -- no new table, no new mechanism, just a new event_type.
+    Denied attempts are logged separately, by _deny() below, under the
+    "admin_action_denied" event_type."""
     statistics.record_event("admin_action", telegram_user_id=telegram_user_id, notes=action)
 
 
@@ -90,7 +100,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     settings = _settings_from_context(context)
     if not is_authorized(update, settings):
-        await _deny(update)
+        await _deny(update, context, "reset")
         return
 
     database = _database_from_context(context)
@@ -124,7 +134,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     settings = _settings_from_context(context)
     if not is_authorized(update, settings):
-        await _deny(update)
+        await _deny(update, context, "clear")
         return
 
     database = _database_from_context(context)
@@ -209,7 +219,7 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Return a human-readable summary of the current session."""
     settings = _settings_from_context(context)
     if not is_authorized(update, settings):
-        await _deny(update)
+        await _deny(update, context, "summary")
         return
 
     database = _database_from_context(context)
@@ -239,7 +249,7 @@ async def export(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Export current customer records to CSV or JSON and return the file."""
     settings = _settings_from_context(context)
     if not is_authorized(update, settings):
-        await _deny(update)
+        await _deny(update, context, "export")
         return
 
     export_format = "csv"

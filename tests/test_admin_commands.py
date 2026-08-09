@@ -246,6 +246,59 @@ async def test_clear_denied_for_unauthorized_user(database, session_manager):
 
 
 # ---------------------------------------------------------------------------
+# Denied admin attempts are audited too, not just successful ones
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "command_name, expected_action",
+    [
+        ("reset", "reset"),
+        ("clear", "clear"),
+        ("summary", "summary"),
+        ("export", "export"),
+    ],
+)
+async def test_denied_admin_attempt_is_audit_logged(database, session_manager, command_name, expected_action):
+    """Every admin command's denial path must write an
+    admin_action_denied event -- previously only successful admin
+    actions were logged at all, so repeated unauthorized attempts left
+    no trace."""
+    settings = Settings(telegram_bot_token="x", openai_api_key=None)  # no admins configured -> always denied
+    update = _fake_update(user_id=42)
+    context = _fake_context(database, session_manager, settings)
+
+    command = getattr(admin_commands, command_name)
+    await command(update, context)
+
+    with database.connect() as conn:
+        latest_event = conn.execute(
+            "SELECT event_type, telegram_user_id, notes FROM customer_events ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert latest_event["event_type"] == "admin_action_denied"
+    assert latest_event["telegram_user_id"] == 42
+    assert latest_event["notes"] == expected_action
+    update.effective_message.reply_text.assert_awaited_once_with("Permission denied.")
+
+
+@pytest.mark.asyncio
+async def test_denied_admin_attempt_does_not_log_as_a_successful_admin_action(database, session_manager):
+    """A denied attempt must never be mistakable for a successful one
+    in the audit trail -- distinct event_type, not just distinct notes."""
+    settings = Settings(telegram_bot_token="x", openai_api_key=None)
+    update = _fake_update(user_id=42)
+    context = _fake_context(database, session_manager, settings)
+
+    await admin_commands.reset(update, context)
+
+    with database.connect() as conn:
+        admin_action_count = conn.execute(
+            "SELECT COUNT(*) FROM customer_events WHERE event_type = 'admin_action'"
+        ).fetchone()[0]
+    assert admin_action_count == 0
+
+
+# ---------------------------------------------------------------------------
 # /summary - Summary generation
 # ---------------------------------------------------------------------------
 
