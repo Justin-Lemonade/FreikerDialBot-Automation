@@ -51,8 +51,6 @@ The project handles customer data, call outcomes, notes, history, and exports. I
 
 ## Open security items
 
-- [ ] **CORS is still wide open.** It should be restricted to the real Mini App origin once that origin is stable.
-- [ ] **Denied admin attempts are not yet audit-logged.** Only successful admin actions currently write the admin event trail.
 - [ ] **Any route added later must be added to the auth gate list at the same time.** `_API_PATHS` is now a security boundary and needs maintenance discipline.
 - [ ] **The anonymous dev escape hatch is easy to misconfigure.** It is intentionally off by default, but it should never be enabled outside local testing.
 - [ ] **Future route growth may create policy drift.** New endpoints must be checked against both auth and authorization expectations before release.
@@ -64,6 +62,8 @@ The project handles customer data, call outcomes, notes, history, and exports. I
 - ✅ Shared admin authorization for Telegram and the Mini App.
 - ✅ Admin-gated export.
 - ✅ Keeping security policy in `security.py` instead of duplicating it across frontends.
+- ✅ **CORS is restricted to known origins.** `Settings.mini_app_allowed_origins` (the configured `mini_app_url`, the Vite dev server, plus `MINI_APP_EXTRA_ALLOWED_ORIGINS` for anything else) replaces the previous unconditional `*`.
+- ✅ **Denied admin attempts are audit-logged.** A new `admin_action_denied` event_type is written on every unauthorized reset/clear/summary/export attempt (Telegram) and the Mini App's own `/export` 403, alongside the existing successful-action log.
 
 ## Things to check before shipping
 
@@ -72,13 +72,11 @@ The project handles customer data, call outcomes, notes, history, and exports. I
 3. Confirm any new route is covered by the same security rules as the existing ones.
 4. Confirm no runtime data or generated artifacts are staged for commit.
 5. Confirm no sensitive customer material is being reintroduced into source control.
-6. Confirm CORS is still acceptable for the current deployment model.
+6. Confirm any new deployment origin (a new domain, a new ngrok URL format, etc.) is added to `mini_app_allowed_origins` or `MINI_APP_EXTRA_ALLOWED_ORIGINS`.
 
 ## Notes for future passes
 
 - If a second permission tier is needed, add it deliberately instead of overloading the current admin allowlist.
-- If denied admin attempts become important operationally, add explicit audit logging rather than assuming the current success-only log is enough.
-- If the Mini App origin becomes stable, tighten CORS to that origin instead of leaving it as `*`.
 - If a new API route is introduced, update the auth gate list and the architecture doc together.
 - If the repo ever starts handling a new class of sensitive file, treat it as a security review item before treating it as a documentation issue.
 

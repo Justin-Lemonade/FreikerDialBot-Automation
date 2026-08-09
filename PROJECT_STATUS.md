@@ -81,14 +81,17 @@ These need a product decision first, so they should stay out of the ready-to-del
 
 ## What is currently open
 
-- CORS is still wide open and should be restricted to the real Mini App origin.
-- Denied admin attempts are not yet audit-logged.
 - The Mini App still has no import flow of its own; importing remains Telegram-only.
 - Frontend test coverage is still sparse or absent -- there is no frontend test runner configured yet (no vitest/jest). All frontend changes are validated by typecheck + lint + build + manual diff review, not automated frontend tests. Setting up a frontend test framework is its own decision, flagged as the top open item in `FreikerDialBot_UI_UX_Development_Log.md`.
 - Settings > Phone Handling (primary-number preference, quick switching), Display, Queue (pre-ready count, active-queue/new-contacts ordering), most of Search, Language (Russian/Tajik), Accent Color, Animation Intensity, and Version Info are still unimplemented placeholders in `Settings.tsx` (honestly disabled, not faked) -- see the Settings section list there for the full current set.
 - Landing's "full-screen" height (`calc(100dvh - 8.5rem)`) is an approximation of the app bar + bottom nav height, not measured against the actual rendered DOM on a real device.
 
 ## Recently completed
+
+- **Security backlog cleanup:**
+  - CORS: `Access-Control-Allow-Origin: *` replaced with a real allowlist (`Settings.mini_app_allowed_origins` -- the configured `mini_app_url`, the Vite dev server, plus an optional `MINI_APP_EXTRA_ALLOWED_ORIGINS` env var). 8 new tests.
+  - Denied admin attempts (reset/clear/summary/export on Telegram, `/export` on the Mini App) are now audit-logged under a new `admin_action_denied` event_type, not just successful ones. 7 new tests.
+  - Full suite: 348 passed.
 
 - **UI pass 4 (multi-commit) -- see `FreikerDialBot_UI_UX_Development_Log.md` for the full self-review:**
   - Restored a real Home/Landing screen (`Landing.tsx`) separate from the live calling workflow. `Home.tsx` had literally documented itself as *being* the calling workflow, which directly contradicted the product intent -- `Screen` now has both `'home'` (Landing: Welcome Back, queue summary, Continue Session/Upload Contacts, Search/Commands/Settings shortcuts) and `'calling'` (the former merged screen).
