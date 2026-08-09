@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # jsdom (a test-only dependency, added alongside vitest) requires
           # Node >=22.22.2 -- Node 20 fails to even import it, which is
