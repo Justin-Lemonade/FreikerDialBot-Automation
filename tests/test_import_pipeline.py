@@ -590,7 +590,109 @@ class TestAIParsingWithMockedClient:
 # TIER 6: Full pipeline integration
 # ===========================================================================
 
-class TestFullPipelineIntegration:
+class TestXlsxImport:
+    """Importer.import_xlsx() was called by telegram_ui.handle_xlsx_file
+    but never actually implemented -- every real .xlsx upload crashed
+    with an AttributeError (not caught by handle_xlsx_file's own
+    `except ImporterError`, so it surfaced as an unhandled exception,
+    not even a helpful error message). These tests exercise the full
+    real path: an actual .xlsx file on disk, through openpyxl, through
+    the same _process_customers pipeline import_text/import_image use.
+    """
+
+    def _make_xlsx(self, tmp_path, headers, rows, filename="customers.xlsx"):
+        import openpyxl
+
+        path = tmp_path / filename
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(headers)
+        for row in rows:
+            ws.append(row)
+        wb.save(path)
+        return path
+
+    @pytest.mark.asyncio
+    async def test_import_xlsx_inserts_customers(self, importer, database, tmp_path):
+        path = self._make_xlsx(
+            tmp_path,
+            ["Loan Number", "First Name", "Last Name", "Phone", "Balance", "Days Overdue"],
+            [
+                ["X001", "Ada", "Lovelace", "5551234567", "500", "10"],
+                ["X002", "Bo", "Kim", "5559876543", "750", "20"],
+            ],
+        )
+
+        result = await importer.import_xlsx(path)
+
+        assert result.imported_count == 2
+        assert database.count_customers() == 2
+
+    @pytest.mark.asyncio
+    async def test_import_xlsx_creates_a_session(self, importer, session_manager, tmp_path):
+        path = self._make_xlsx(
+            tmp_path,
+            ["Loan Number", "First Name", "Last Name", "Phone"],
+            [["X010", "Cy", "Diaz", "5551110000"]],
+        )
+
+        result = await importer.import_xlsx(path)
+
+        assert result.session_id is not None
+        assert session_manager.current_session()["id"] == result.session_id
+
+    @pytest.mark.asyncio
+    async def test_import_xlsx_maps_financial_field_aliases(self, importer, database, tmp_path):
+        """Same alias-mapping validation.load_xlsx_rows already had test
+        coverage for in isolation -- this proves it actually survives
+        the full import_xlsx -> _process_customers -> insert_customers
+        path, not just the standalone parsing function."""
+        path = self._make_xlsx(
+            tmp_path,
+            ["Loan Number", "First Name", "Last Name", "Phone",
+             "Monthly Payment", "Overdue Amount", "Original Loan Amount"],
+            [["X020", "Xena", "Row", "5551234567", "275.50", "100.00", "9000.00"]],
+        )
+
+        await importer.import_xlsx(path)
+
+        customer = database.get_customers_by_loan_numbers(["X020"])[0]
+        assert customer["monthly_payment"] == "275.50"
+        assert customer["current_overdue_amount"] == "100.00"
+        assert customer["original_loan_amount"] == "9000.00"
+
+    @pytest.mark.asyncio
+    async def test_import_xlsx_rejects_a_sheet_with_no_recognizable_headers(self, importer, tmp_path):
+        path = self._make_xlsx(tmp_path, ["Nonsense Column", "Another One"], [["a", "b"]])
+
+        with pytest.raises(ImporterError):
+            await importer.import_xlsx(path)
+
+    @pytest.mark.asyncio
+    async def test_import_xlsx_rejects_an_empty_sheet(self, importer, tmp_path):
+        import openpyxl
+
+        path = tmp_path / "empty.xlsx"
+        openpyxl.Workbook().save(path)
+
+        with pytest.raises(ImporterError):
+            await importer.import_xlsx(path)
+
+    @pytest.mark.asyncio
+    async def test_import_xlsx_flags_rows_missing_required_fields_instead_of_crashing(self, importer, database, tmp_path):
+        path = self._make_xlsx(
+            tmp_path,
+            ["Loan Number", "First Name", "Last Name", "Phone"],
+            [["X030", "", "NoFirstName", "5551234567"]],
+        )
+
+        result = await importer.import_xlsx(path)
+
+        assert result.flagged_count == 1
+        assert database.count_customers() == 1
+
+
+
     """A deliberately messy mixed batch, run all the way through
     import -> queue -> export, proving nothing crashes end-to-end."""
 

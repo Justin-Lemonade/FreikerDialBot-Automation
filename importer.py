@@ -69,6 +69,47 @@ class Importer:
 
         return result
 
+    async def import_xlsx(self, xlsx_path) -> ImportResult:
+        """Import from an .xlsx file. This method was called by
+        telegram_ui.handle_xlsx_file but never actually implemented --
+        every real .xlsx upload has been crashing with an AttributeError
+        (not caught by handle_xlsx_file's `except ImporterError`, so it
+        surfaced as an unhandled exception rather than a helpful
+        message). validation.load_xlsx_rows already does the real
+        parsing/column-alias work and has its own test coverage; this
+        just wires it into the same _process_customers pipeline
+        _import_json uses, so xlsx and JSON imports get identical
+        duplicate-detection, flagging, and session-creation behavior.
+        """
+        from pathlib import Path
+
+        xlsx_path = Path(xlsx_path)
+        try:
+            rows = validation.load_xlsx_rows(xlsx_path)
+        except validation.ValidationError as exc:
+            raise ImporterError(str(exc)) from exc
+
+        customers = [validation.normalize_customer(row) for row in rows]
+        result = await self._process_customers(customers)
+
+        if ORIGINALS_DIR and xlsx_path.exists():
+            import shutil
+
+            orig_dir = Path(ORIGINALS_DIR)
+            orig_dir.mkdir(parents=True, exist_ok=True)
+            dest = orig_dir / xlsx_path.name
+            shutil.copy2(xlsx_path, dest)
+            result.original_path = dest
+
+        if IMPORTS_DIR and result.customers:
+            import_dir = Path(IMPORTS_DIR)
+            import_dir.mkdir(parents=True, exist_ok=True)
+            norm_path = import_dir / f"{xlsx_path.stem}.json"
+            norm_path.write_text(json.dumps(result.customers, indent=2, ensure_ascii=False))
+            result.normalized_path = norm_path
+
+        return result
+
     async def _import_json(self, text: str) -> ImportResult:
         try:
             data = json.loads(text)
