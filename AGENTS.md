@@ -45,6 +45,29 @@ Treat `SECURITY_AUDIT_REPORT.md` as a security snapshot, not as an instruction f
 - Do not edit third-party dependencies or generated files.
 - Prefer the smallest correct change.
 
+## Delegation Handler ownership
+
+`PROJECT_STATUS.md` is the delegation control center. The Delegation Handler is the authority responsible for reconciling worker reports with the live repository and maintaining delegation state.
+
+Worker/agent rules:
+
+- A worker may update `PROJECT_STATUS.md` only when explicitly instructed by the Delegation Handler.
+- A worker must not mark its own task `COMPLETED` merely because it made the requested code change.
+- Workers should report evidence, tests, commit SHA, and unresolved findings; the Delegation Handler independently verifies completion before treating the task as complete.
+- Before starting any task from `PROJECT_STATUS.md`, a worker must re-check the current `main` HEAD and the relevant code/tests. A task documented as open may already have been solved by a newer commit.
+- If the task is already handled, report `ALREADY HANDLED` and do not recreate the change.
+- If a report discovers additional work, separate it from the assigned task instead of silently expanding scope.
+- Workers must not resurrect completed/superseded tasks because an older audit or report still mentions them.
+- The current GitHub tree, tests, commits, and PR state outrank stale status entries.
+
+Delegation lifecycle:
+
+`DISCOVERED → ASSESSED → READY TO DELEGATE → DELEGATED → IMPLEMENTED → VERIFIED → COMPLETED`
+
+Other valid states include `BLOCKED`, `ESCALATED`, `DEFERRED`, `SUPERSEDED`, and `ALREADY HANDLED`.
+
+The Delegation Handler should reconcile `PROJECT_STATUS.md` after worker results and should prefer independent verification over trusting worker claims or historical audit snapshots.
+
 ## Main code areas
 
 - `bot.py` — Telegram entrypoint.
