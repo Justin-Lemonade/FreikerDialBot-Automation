@@ -48,13 +48,33 @@ class MiniAppService:
             return f"{minutes}m {secs}s"
         return f"{minutes}m"
 
+    def _ordered_phone_numbers(self, phone_numbers: list[str]) -> list[str]:
+        """Reorders phone_numbers so the operator's Primary Phone
+        Preference (Settings > Phone Handling) is tried first when
+        picking which number to auto-display/dial, falling back through
+        the rest in their original stored order. Real and
+        backend-enforced: reads the same `app_settings` row
+        get_settings()/update_settings() writes, so the Mini App and any
+        future Telegram-side surface share one preference, not two.
+
+        Only ever changes which number `first_non_blacklisted_phone`
+        tries first -- the returned list is a reordering of the same
+        numbers, so blacklist fallback (skip a blacklisted preferred
+        number, fall back to the next available one) keeps working
+        unchanged."""
+        preference = self.database.get_setting("primary_phone_preference", "first")
+        if preference == "second" and len(phone_numbers) > 1:
+            return [phone_numbers[1], phone_numbers[0], *phone_numbers[2:]]
+        return phone_numbers
+
     def _customer_payload(self, customer: dict[str, Any] | None) -> dict[str, Any] | None:
         if not customer:
             return None
         phone_numbers = customer.get("phone_numbers") or []
         if not isinstance(phone_numbers, list):
             phone_numbers = []
-        phone = self.database.first_non_blacklisted_phone(phone_numbers) if phone_numbers else ""
+        ordered_phone_numbers = self._ordered_phone_numbers(phone_numbers) if phone_numbers else phone_numbers
+        phone = self.database.first_non_blacklisted_phone(ordered_phone_numbers) if ordered_phone_numbers else ""
         notes = []
         if customer.get("warning_note"):
             notes.append(customer["warning_note"])
@@ -271,17 +291,33 @@ class MiniAppService:
         behavior belong here (Max Call Attempts is enforced by
         QueueEngine.restart_call_later; Auto Advance is read by the
         frontend to decide whether to move to the next customer
-        automatically after an outcome). Anything not listed here is
-        still a UI placeholder per Settings.tsx and must not be faked.
+        automatically after an outcome; Primary Phone Preference is
+        enforced by _ordered_phone_numbers/_customer_payload; Pre-ready
+        Count is read by queue_upcoming's `count` param). Anything not
+        listed here is still a UI placeholder per Settings.tsx and must
+        not be faked.
         """
-        raw = self.database.get_settings(["max_call_attempts", "auto_advance"])
+        raw = self.database.get_settings(
+            ["max_call_attempts", "auto_advance", "primary_phone_preference", "pre_ready_count"]
+        )
         max_attempts_raw = raw.get("max_call_attempts")
+        pre_ready_raw = raw.get("pre_ready_count")
         return {
             "maxCallAttempts": None if max_attempts_raw in (None, "unlimited") else int(max_attempts_raw),
             # Defaults to True: this matches the app's existing behavior
             # (App.tsx has always shown the next customer immediately)
             # for anyone who has never touched the setting.
             "autoAdvance": raw.get("auto_advance") != "0",
+            # Which stored phone number the Call button/auto-display
+            # tries first. Defaults to "first" -- today's existing
+            # behavior (phone_numbers[0], skipping blacklisted entries)
+            # for anyone who has never touched the setting.
+            "primaryPhonePreference": raw.get("primary_phone_preference") or "first",
+            # How many upcoming customers the frontend eagerly previews
+            # via GET /queue/upcoming?count=N ahead of the active one.
+            # Defaults to 0 ("None" in the UI): only the current customer
+            # is prepared, matching today's existing on-demand behavior.
+            "preReadyCount": int(pre_ready_raw) if pre_ready_raw is not None else 0,
         }
 
     def update_settings(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -299,6 +335,19 @@ class MiniAppService:
                 self.database.set_setting("max_call_attempts", str(parsed))
         if "autoAdvance" in fields:
             self.database.set_setting("auto_advance", "1" if fields["autoAdvance"] else "0")
+        if "primaryPhonePreference" in fields:
+            preference = fields["primaryPhonePreference"]
+            if preference not in ("first", "second"):
+                return {"ok": False, "error": "primaryPhonePreference must be 'first' or 'second'"}
+            self.database.set_setting("primary_phone_preference", preference)
+        if "preReadyCount" in fields:
+            try:
+                pre_ready = int(fields["preReadyCount"])
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "preReadyCount must be an integer"}
+            if pre_ready not in (0, 1, 2, 3):
+                return {"ok": False, "error": "preReadyCount must be 0, 1, 2, or 3"}
+            self.database.set_setting("pre_ready_count", str(pre_ready))
         return {"ok": True, "settings": self.get_settings()}
 
     def pause_queue(self, telegram_user_id: int | None = None) -> dict[str, Any]:
@@ -324,18 +373,46 @@ class MiniAppService:
             "session": self.get_current_session(),
         }
 
-    def queue_upcoming(self) -> dict[str, Any] | None:
-        """Preview the customer after the current one, without touching
-        queue state -- used for a "who's next" glance, not to be confused
-        with the current customer itself."""
+    def queue_upcoming(self, count: int | None = None) -> dict[str, Any] | list[dict[str, Any]] | None:
+        """Preview the customer(s) after the current one, without
+        touching queue state -- used for a "who's next" glance, not to
+        be confused with the current customer itself.
+
+        `count` is None by default and returns a single customer object
+        exactly as before (backward compatible with existing callers).
+        Passing `count` returns a list of up to that many upcoming
+        customers -- the real backend support behind Settings > Queue >
+        Pre-ready Count: the frontend decides how many to request based
+        on that setting, this method just answers "who's next" N times
+        over using the same deterministic ordering
+        get_next_actionable_customer already uses for one, never a
+        second/duplicated selection rule."""
         current = self._active_customer()
         current_id = current["id"] if current else None
         exclude_ids = {current_id} if current_id else set()
-        upcoming = self.database.get_next_actionable_customer(exclude_ids=exclude_ids or None)
-        while upcoming and upcoming.get("is_blacklisted"):
-            exclude_ids.add(upcoming["id"])
-            upcoming = self.database.get_next_actionable_customer(exclude_ids=exclude_ids)
-        return self._customer_payload(upcoming)
+
+        def _next() -> dict[str, Any] | None:
+            nonlocal exclude_ids
+            candidate = self.database.get_next_actionable_customer(exclude_ids=exclude_ids or None)
+            while candidate and candidate.get("is_blacklisted"):
+                exclude_ids.add(candidate["id"])
+                candidate = self.database.get_next_actionable_customer(exclude_ids=exclude_ids)
+            if candidate:
+                exclude_ids.add(candidate["id"])
+            return candidate
+
+        if count is None:
+            return self._customer_payload(_next())
+
+        results: list[dict[str, Any]] = []
+        for _ in range(max(0, count)):
+            candidate = _next()
+            if not candidate:
+                break
+            payload = self._customer_payload(candidate)
+            if payload:
+                results.append(payload)
+        return results
 
     def search_customers(self, query: str) -> dict[str, Any]:
         results = self.database.search_customers(query)
@@ -648,11 +725,21 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
             self._json(200, self.service.call_back(telegram_user_id=telegram_user_id))
             return True
         if path == "/queue/upcoming" and method == "GET":
-            upcoming = self.service.queue_upcoming()
-            if upcoming is None:
-                self._json(404, {"error": "No upcoming customer"})
+            raw_count = (query.get("count") or [None])[0]
+            if raw_count is None:
+                upcoming = self.service.queue_upcoming()
+                if upcoming is None:
+                    self._json(404, {"error": "No upcoming customer"})
+                    return True
+                self._json(200, upcoming)
                 return True
-            self._json(200, upcoming)
+            try:
+                requested_count = int(raw_count)
+            except (TypeError, ValueError):
+                self._json(400, {"error": "count must be an integer"})
+                return True
+            upcoming_list = self.service.queue_upcoming(count=requested_count)
+            self._json(200, {"upcoming": upcoming_list})
             return True
         if path == "/customer/search" and method == "GET":
             search_query = (query.get("q") or query.get("query") or [""])[0]

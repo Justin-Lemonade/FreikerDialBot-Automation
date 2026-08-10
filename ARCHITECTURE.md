@@ -88,6 +88,10 @@ The API is organized around the same responsibilities as the backend. The curren
 
 `/import` is not admin-gated (it mirrors the Telegram bot's own upload handlers); `/export` is the only admin-gated route. There is no `POST /call/return` route in the current code.
 
+`GET /queue/upcoming` takes an optional `?count=N` query param. Omitted, it returns a single upcoming-customer object exactly as before (backward compatible). With `count`, it returns `{"upcoming": [...]}`, a list of up to `N` upcoming customers using the same deterministic ordering/blacklist-skipping as the single-customer form. This backs Settings > Queue > Pre-ready Count -- the frontend decides how many to request based on that setting; the backend does not maintain a second queue or selection rule for it.
+
+`GET/POST /settings` also covers `primaryPhonePreference` (`"first"` | `"second"`, default `"first"`) and `preReadyCount` (`0`-`3`, default `0`). `primaryPhonePreference` reorders which stored phone number `_customer_payload` tries first when picking the auto-display/dial number, falling back through the rest (including skipping blacklisted numbers) exactly as before.
+
 ### Ownership rules
 
 - The queue engine decides who is next.

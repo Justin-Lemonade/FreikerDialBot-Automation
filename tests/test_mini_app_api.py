@@ -231,7 +231,12 @@ def test_settings_endpoint_defaults_to_unlimited_and_auto_advance_on(api_server)
     server, service = api_server
     status, settings = _request_json(server, "/settings", service=service)
     assert status == 200
-    assert settings == {"maxCallAttempts": None, "autoAdvance": True}
+    assert settings == {
+        "maxCallAttempts": None,
+        "autoAdvance": True,
+        "primaryPhonePreference": "first",
+        "preReadyCount": 0,
+    }
 
 
 def test_settings_endpoint_persists_max_call_attempts(api_server):
@@ -240,7 +245,15 @@ def test_settings_endpoint_persists_max_call_attempts(api_server):
         server, "/settings", method="POST", payload={"maxCallAttempts": 2}, service=service
     )
     assert status == 200
-    assert result == {"ok": True, "settings": {"maxCallAttempts": 2, "autoAdvance": True}}
+    assert result == {
+        "ok": True,
+        "settings": {
+            "maxCallAttempts": 2,
+            "autoAdvance": True,
+            "primaryPhonePreference": "first",
+            "preReadyCount": 0,
+        },
+    }
 
     # Persists across a fresh read, not just the response echo.
     status, settings = _request_json(server, "/settings", service=service)
@@ -269,6 +282,157 @@ def test_settings_endpoint_can_set_unlimited_again(api_server):
     )
     assert status == 200
     assert result["settings"]["maxCallAttempts"] is None
+
+
+def test_settings_endpoint_persists_primary_phone_preference(api_server):
+    server, service = api_server
+    status, result = _request_json(
+        server, "/settings", method="POST", payload={"primaryPhonePreference": "second"}, service=service
+    )
+    assert status == 200
+    assert result["settings"]["primaryPhonePreference"] == "second"
+
+    # Persists across a fresh read, not just the response echo.
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["primaryPhonePreference"] == "second"
+
+
+def test_settings_endpoint_rejects_invalid_primary_phone_preference(api_server):
+    server, service = api_server
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(
+            server, "/settings", method="POST", payload={"primaryPhonePreference": "third"}, service=service
+        )
+    assert exc_info.value.code == 400
+
+
+def test_primary_phone_preference_second_reorders_customer_phone(api_server):
+    """The customer's `phone` field (auto-display/dial number) tries the
+    second stored number first when the preference is "second", but
+    still shows every number in `phones` (order unchanged there)."""
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "pp-1",
+                "first_name": "Pref",
+                "last_name": "One",
+                "phone_numbers": ["111", "222"],
+                "balance": "10",
+                "days_overdue": "1",
+            }
+        ]
+    )
+    _request_json(server, "/settings", method="POST", payload={"primaryPhonePreference": "second"}, service=service)
+
+    status, customer = _request_json(server, "/customer/current", service=service)
+    assert status == 200
+    assert customer["phone"] == "222"
+    assert [entry["number"] for entry in customer["phones"]] == ["111", "222"]
+
+
+def test_primary_phone_preference_second_falls_back_when_second_is_blacklisted(api_server):
+    """Sensible fallback: if the preferred (second) number is
+    blacklisted, the auto-display/dial number falls back to the next
+    available one instead of surfacing a blacklisted number."""
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "pp-2",
+                "first_name": "Pref",
+                "last_name": "Two",
+                "phone_numbers": ["333", "444"],
+                "balance": "10",
+                "days_overdue": "1",
+            }
+        ]
+    )
+    service.database.blacklist_phone("444")
+    _request_json(server, "/settings", method="POST", payload={"primaryPhonePreference": "second"}, service=service)
+
+    status, customer = _request_json(server, "/customer/current", service=service)
+    assert status == 200
+    assert customer["phone"] == "333"
+
+
+def test_settings_endpoint_persists_pre_ready_count(api_server):
+    server, service = api_server
+    status, result = _request_json(server, "/settings", method="POST", payload={"preReadyCount": 2}, service=service)
+    assert status == 200
+    assert result["settings"]["preReadyCount"] == 2
+
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["preReadyCount"] == 2
+
+
+def test_settings_endpoint_rejects_invalid_pre_ready_count(api_server):
+    server, service = api_server
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(server, "/settings", method="POST", payload={"preReadyCount": 4}, service=service)
+    assert exc_info.value.code == 400
+
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(server, "/settings", method="POST", payload={"preReadyCount": "many"}, service=service)
+    assert exc_info.value.code == 400
+
+
+def test_queue_upcoming_with_count_returns_a_list(api_server):
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {"loan_number": f"cnt-{i}", "first_name": f"C{i}", "last_name": "Deep",
+             "phone_numbers": [f"+1555000{i:04d}"], "balance": "10", "days_overdue": "1"}
+            for i in range(1, 5)
+        ]
+    )
+    _, current = _request_json(server, "/customer/current", service=service)
+    _request_json(server, "/call/start", method="POST", payload={"customerId": current["id"]}, service=service)
+
+    status, result = _request_json(server, "/queue/upcoming?count=3", service=service)
+    assert status == 200
+    assert [c["loanNumber"] for c in result["upcoming"]] == ["cnt-2", "cnt-3", "cnt-4"]
+
+
+def test_queue_upcoming_with_count_stops_when_queue_runs_out(api_server):
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {"loan_number": "cnt-a", "first_name": "A", "last_name": "One",
+             "phone_numbers": ["+15550009001"], "balance": "10", "days_overdue": "1"},
+            {"loan_number": "cnt-b", "first_name": "B", "last_name": "Two",
+             "phone_numbers": ["+15550009002"], "balance": "10", "days_overdue": "1"},
+        ]
+    )
+    _, current = _request_json(server, "/customer/current", service=service)
+    _request_json(server, "/call/start", method="POST", payload={"customerId": current["id"]}, service=service)
+
+    status, result = _request_json(server, "/queue/upcoming?count=5", service=service)
+    assert status == 200
+    assert [c["loanNumber"] for c in result["upcoming"]] == ["cnt-b"]
+
+
+def test_queue_upcoming_without_count_keeps_single_object_shape(api_server):
+    """Backward compatibility: omitting `count` must keep returning the
+    plain customer object, not a list, so existing callers/tests are
+    unaffected."""
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {"loan_number": "bc-1", "first_name": "Back", "last_name": "Compat",
+             "phone_numbers": ["+15550009101"], "balance": "10", "days_overdue": "1"},
+            {"loan_number": "bc-2", "first_name": "Back", "last_name": "Compat2",
+             "phone_numbers": ["+15550009102"], "balance": "10", "days_overdue": "1"},
+        ]
+    )
+    _, current = _request_json(server, "/customer/current", service=service)
+    _request_json(server, "/call/start", method="POST", payload={"customerId": current["id"]}, service=service)
+
+    status, upcoming = _request_json(server, "/queue/upcoming", service=service)
+    assert status == 200
+    assert upcoming["loanNumber"] == "bc-2"
 
 
 def test_call_back_respects_max_call_attempts_limit(api_server):
