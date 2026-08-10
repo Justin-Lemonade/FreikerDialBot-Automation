@@ -424,12 +424,13 @@ These are intentionally separated from the actionable backlog. They are ideas or
 - Verify CORS has no wildcard fallback.
 - Verify denied admin attempts remain audit-logged.
 - Verify every real Mini App API endpoint is authenticated/authorized as required.
-- Verify `bot.py` remains the single entrypoint when Mini App is enabled.
+- Verify `bot.py` remains the single entrypoint when Mini App is enabled — confirmed 2026-08-10: `bot.py` `main()` calls `launch_mini_app_stack()` in-process; `start_mini_app.py` `launch_mini_app_stack()` does not launch the bot; only `start_mini_app.py` standalone `main()` spawns `bot.py --no-mini-app` as a subprocess (intentional separate mode). `Application.builder()` / `run_polling()` appear only in `bot.py`. 391 tests pass.
 - Verify Mini App API remains a thin adapter over shared backend services.
 - Verify frontend placeholders remain honest.
 - Verify current Vitest tests and CI remain aligned.
 - Verify documentation claims against live code after substantial passes.
 - Triage open Dependabot PRs before assigning any dependency work — completed 2026-08-10 (VERIFY-009/010).
+- Verify `bot.py` remains the single entrypoint when Mini App is enabled — verified 2026-08-10 (see note above).
 - Verify importer archive-directory wiring (`VERIFY-013`).
 - Verify route/documentation parity (`VERIFY-014`) — completed 2026-08-10.
 - Verify auth-boundary coverage after API route changes (`VERIFY-015`) — completed 2026-08-10.
