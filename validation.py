@@ -117,13 +117,22 @@ def load_xlsx_rows(path) -> list[dict[str, Any]]:
             "openpyxl is required for Excel import. Run: pip install openpyxl"
         ) from exc
 
+    wb = None
     try:
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
         ws = wb.active
     except Exception as exc:
+        if wb is not None:
+            wb.close()
         raise ValidationError(f"Could not open Excel file: {exc}") from exc
 
     rows = list(ws.iter_rows(values_only=True))
+    if wb is not None:
+        # Read-only workbooks keep the underlying file handle open until
+        # close() -- without this, temp-file callers (e.g. the Mini App's
+        # /import, which unlinks its temp file right after) hit a
+        # PermissionError on Windows.
+        wb.close()
     if not rows:
         raise ValidationError("Excel file is empty.")
 

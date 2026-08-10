@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
 
 import validation
 
-ORIGINALS_DIR = None
-IMPORTS_DIR = None
+from config import IMPORTS_DIR, ORIGINALS_DIR
 
 
 class ImporterError(Exception):

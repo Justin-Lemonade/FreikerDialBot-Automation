@@ -49,10 +49,6 @@ API after pushing, not just trusted from the `git push` exit code.
   approximation of the app bar + bottom nav height, not measured
   against the actual rendered DOM. Likely close but unverified on a
   real device.
-- No frontend test runner exists in this repo (no vitest/jest) --
-  every change in this pass was validated by typecheck + lint + build
-  + manual code/diff review, not automated frontend tests. This is a
-  known, previously-flagged gap, not a new one.
 - Settings > everything outside Calling Behavior / Appearance /
   Admin-Diagnostics-partial is still an honest disabled placeholder
   (Phone Handling, Display, Queue, Search, Language, most of
@@ -87,11 +83,7 @@ pass's Home-screen restructuring made the card the *only* thing on the
    preference, quick switching) -- currently the most fleshed-out
    "empty" category and the most naturally next-in-line given phone
    numbers are now fully exposed elsewhere.
-3. Frontend test runner decision (vitest is the natural fit given
-   Vite) -- at minimum, cover `lib/download.ts`, the Search
-   `splitOnMatch` highlighter, and `Commands`' command parser, since
-   all three are pure logic with no backend dependency.
-4. Pre-ready N-deep customers (Settings > Queue) -- the single largest
+3. Pre-ready N-deep customers (Settings > Queue) -- the single largest
    remaining gap between the Settings categories and real backend
    capability.
 

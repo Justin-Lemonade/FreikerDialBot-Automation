@@ -10,14 +10,10 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from backend import Backend, build_backend
-from config import BASE_DIR, Settings, load_settings
-from database import Database
-from export_engine import EXPORTERS, ExportError, export_customers
+from config import Settings
+from export_engine import ExportError, export_customers
 from importer import ImporterError
-from queue_engine import QueueEngine
 import security
-from session_manager import SessionManager
-from statistics_engine import StatisticsEngine
 from telegram_auth import TelegramAuthError, extract_user_id, validate_init_data
 
 
@@ -482,35 +478,6 @@ class MiniAppService:
             notes=f"export:{export_format}",
         )
         return body, content_type, file_path.name
-
-    def _record_event(self, event_type: str, *, customer_id: int | None = None, notes: str | None = None, duration: int | None = None) -> None:
-        session = self.session_manager.current_session()
-        with self.database.connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO customer_events (
-                    session_id,
-                    loan_number,
-                    customer_id,
-                    event_type,
-                    event_timestamp,
-                    telegram_user_id,
-                    notes
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    session["id"] if session else None,
-                    None,
-                    customer_id,
-                    event_type,
-                    datetime.now(timezone.utc).isoformat(),
-                    None,
-                    notes,
-                ),
-            )
-            conn.commit()
-
 
 _API_PATHS = frozenset({
     "/session/current",

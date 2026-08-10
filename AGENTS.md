@@ -45,6 +45,63 @@ Treat `SECURITY_AUDIT_REPORT.md` as a security snapshot, not as an instruction f
 - Do not edit third-party dependencies or generated files.
 - Prefer the smallest correct change.
 
+## Delegation Handler ownership
+
+`PROJECT_STATUS.md` is the delegation control center. The Delegation Handler is the authority responsible for reconciling worker reports with the live repository and maintaining delegation state.
+
+Worker/agent rules:
+
+- A worker may update `PROJECT_STATUS.md` only when explicitly instructed by the Delegation Handler.
+- A worker must not mark its own task `COMPLETED` merely because it made the requested code change.
+- Workers should report evidence, tests, commit SHA, and unresolved findings; the Delegation Handler independently verifies completion before treating the task as complete.
+- Before starting any task from `PROJECT_STATUS.md`, a worker must re-check the current `main` HEAD and the relevant code/tests. A task documented as open may already have been solved by a newer commit.
+- If the task is already handled, report `ALREADY HANDLED` and do not recreate the change.
+- If a report discovers additional work, separate it from the assigned task instead of silently expanding scope.
+- Workers must not resurrect completed/superseded tasks because an older audit or report still mentions them.
+- The current GitHub tree, tests, commits, and PR state outrank stale status entries.
+
+### Active-work registry rules
+
+`PROJECT_STATUS.md` should contain an **Active Work Registry** near the top of the Delegation Control Center. This registry is intentionally separate from the Delegation Handler's task-state records so agents can coordinate in-flight work without gaining authority over completion status.
+
+Workers may edit **only their own registry row** when the Delegation Handler has explicitly authorized them to claim/release work. A worker must never edit another agent's row, change task status elsewhere in the control center, mark a task complete, or rewrite the registry structure.
+
+Before starting implementation, a worker must:
+
+1. Search the Active Work Registry for the task ID and relevant files.
+2. If another agent already owns the same task or overlapping files, do not start; report the collision.
+3. Claim the task by adding/updating its own row with agent/model name, task ID, scope, files being touched, start time, and expected status.
+4. Only claim a task after verifying it is still incomplete at current `main` HEAD.
+
+While working:
+
+- Keep the claim narrow enough that another agent can see exactly what is reserved.
+- If scope expands, stop and get Delegation Handler approval before changing the claim.
+- Do not leave abandoned claims indefinitely; release the claim when the task is stopped, escalated, completed, or handed back.
+
+When finished, the worker must:
+
+- change only its own registry row to `REPORTING` or `AWAITING VERIFICATION`;
+- record the commit SHA if one exists;
+- leave final `COMPLETED`/`VERIFIED` state decisions to the Delegation Handler;
+- remove/release its row once the Delegation Handler has reconciled the result, or when explicitly instructed.
+
+If the registry conflicts with live GitHub state, live GitHub state wins. The registry is a coordination lock, not a source of truth for whether code is complete.
+
+The Delegation Handler may freely create, modify, clear, or reconcile registry rows and remains the sole authority over task state.
+
+Recommended registry columns:
+
+`Agent/model | Task ID | Status | Scope/files reserved | Started | Commit/PR | Notes`
+
+Delegation lifecycle:
+
+`DISCOVERED → ASSESSED → READY TO DELEGATE → DELEGATED → IMPLEMENTED → VERIFIED → COMPLETED`
+
+Other valid states include `BLOCKED`, `ESCALATED`, `DEFERRED`, `SUPERSEDED`, and `ALREADY HANDLED`.
+
+The Delegation Handler should reconcile `PROJECT_STATUS.md` after worker results and should prefer independent verification over trusting worker claims or historical audit snapshots.
+
 ## Main code areas
 
 - `bot.py` — Telegram entrypoint.

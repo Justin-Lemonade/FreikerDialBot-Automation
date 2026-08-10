@@ -83,9 +83,10 @@ The API is organized around the same responsibilities as the backend. The curren
 - `POST /customer/blacklist`
 - `POST /phone/blacklist`
 - `GET/POST /settings`
+- `POST /import`
 - `GET /export`
 
-There is no `POST /call/return` route in the current code.
+`/import` is not admin-gated (it mirrors the Telegram bot's own upload handlers); `/export` is the only admin-gated route. There is no `POST /call/return` route in the current code.
 
 ### Ownership rules
 

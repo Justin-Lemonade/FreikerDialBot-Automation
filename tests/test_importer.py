@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from openpyxl import Workbook
 
 from ai_parser import AIParser
 from config import Settings
@@ -75,6 +76,59 @@ async def test_import_image_stores_json_customer_and_original(importer, tmp_path
     assert result.customers[0]["loan_number"] == "IMG-1"
     assert result.original_path.exists()
     assert result.normalized_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_import_xlsx_stores_json_customer_and_original(importer, tmp_path):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Customers"
+    sheet.append(["Loan Number", "First Name", "Last Name", "Phone"])
+    sheet.append(["XLSX-1", "Hedy", "Lamarr", "555-1234"])
+    sheet.append(["XLSX-2", "Ada", "Lovelace", "555-5678"])
+    xlsx_path = tmp_path / "customers.xlsx"
+    workbook.save(xlsx_path)
+
+    result = await importer.import_xlsx(xlsx_path)
+
+    assert result.imported_count == 2
+    assert result.customers[0]["loan_number"] == "XLSX-1"
+    assert result.customers[1]["loan_number"] == "XLSX-2"
+    assert importer.database.count_customers() == 2
+    assert result.original_path.exists()
+    assert result.normalized_path.exists()
+    assert result.original_path.name == "customers.xlsx"
+    assert result.normalized_path.name == "customers.json"
+
+
+@pytest.mark.asyncio
+async def test_import_xlsx_with_no_loan_numbers_is_rejected(importer, tmp_path):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Customers"
+    # "Loan Number" column is missing, so all rows will be rejected.
+    sheet.append(["First Name", "Last Name", "Phone"])
+    sheet.append(["Hedy", "Lamarr", "555-1234"])
+    xlsx_path = tmp_path / "invalid_customers.xlsx"
+    workbook.save(xlsx_path)
+
+    with pytest.raises(ImporterError, match="Import is empty: no valid customers found"):
+        await importer.import_xlsx(xlsx_path)
+
+
+@pytest.mark.asyncio
+async def test_import_xlsx_with_no_valid_headers_raises_error(importer, tmp_path):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Customers"
+    # None of these headers are recognizable.
+    sheet.append(["Column A", "Column B", "Column C"])
+    sheet.append(["Hedy", "Lamarr", "555-1234"])
+    xlsx_path = tmp_path / "invalid_headers.xlsx"
+    workbook.save(xlsx_path)
+
+    with pytest.raises(ImporterError, match="Could not find any recognizable column headers"):
+        await importer.import_xlsx(xlsx_path)
 
 
 @pytest.mark.asyncio

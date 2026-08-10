@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import atexit
 import json
 import os
 import subprocess
@@ -35,7 +34,7 @@ from customer_ui import (
     handle_customer_action_callback,
     handle_customer_callback,
     unblacklist_command,
-unblacklist_phone_command,
+    unblacklist_phone_command,
 )
 from database import Database
 from importer import Importer
@@ -156,6 +155,7 @@ def _wait_for_ngrok() -> str:
         "Make sure ngrok is installed and you've run 'ngrok config add-authtoken <token>' once."
     )
 # --- End of added dev server constants and helpers ---
+
 
 async def app_command(update, context) -> None:
     """/app -- opens the Mini App via an inline button. Kept as an
@@ -309,6 +309,21 @@ def build_application() -> Application:
     return application
 
 
+def _should_skip_mini_app(argv: list[str] | None = None) -> bool:
+    """Return True if the Mini App stack should be skipped at startup.
+
+    The documented CLI switch is ``--no-mini-app`` (hyphenated, matching
+    the flag passed by ``start_mini_app.py`` and the comment/log text in
+    this module). ``DISABLE_MINI_APP=1`` is also honored as an
+    environment-level override (e.g. for CI, minimal deployments without
+    Node.js, or when ``start_mini_app.py``'s standalone mode already
+    manages the stack as a subprocess and would otherwise double-launch
+    it).
+    """
+    argv = sys.argv if argv is None else argv
+    return "--no-mini-app" in argv or os.environ.get("DISABLE_MINI_APP") == "1"
+
+
 def main() -> None:
     log.info("Starting importer bot")
 
@@ -321,7 +336,7 @@ def main() -> None:
     # this as a subprocess and would otherwise double-launch it).
     mini_app_procs: list = []
     application = None  # Initialize application to None
-    skip_mini_app = "--no-mini_app" in sys.argv or os.environ.get("DISABLE_MINI_APP") == "1"
+    skip_mini_app = _should_skip_mini_app()
     if not skip_mini_app:
         try:
             from start_mini_app import launch_mini_app_stack
@@ -391,4 +406,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
