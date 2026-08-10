@@ -76,6 +76,7 @@ PR):
 ```bash
 cd frontend
 npm ci
+npm run test
 npx tsc -b --noEmit
 npm run build
 ```
