@@ -1026,6 +1026,25 @@ class TestCorsRestriction:
         _response, cors_header = _request_with_origin(server, "/session/current", "http://localhost:5173", service=service)
         assert cors_header != "*"
 
+    def test_allowed_origin_response_has_vary_origin(self, api_server):
+        """Whenever a specific (non-'*') origin is echoed, the response
+        must also carry Vary: Origin so a shared cache cannot serve one
+        origin's CORS-enabled, customer-data response to a different
+        origin -- the ACAO header is origin-dependent, and caches key on
+        Vary to keep that true."""
+        server, service = api_server
+        response, cors_header = _request_with_origin(server, "/session/current", "http://localhost:5173", service=service)
+        assert cors_header == "http://localhost:5173"
+        assert response.headers.get("Vary") == "Origin"
+
+    def test_disallowed_origin_gets_no_cors_or_vary_header(self, api_server):
+        """No ACAO means no Vary: Origin either -- both are only emitted
+        together when an origin is actually echoed."""
+        server, service = api_server
+        response, cors_header = _request_with_origin(server, "/session/current", "http://evil.example.com", service=service)
+        assert cors_header is None
+        assert response.headers.get("Vary") is None
+
 
 class TestAllowedOriginsSetting:
     def test_defaults_include_the_vite_dev_server(self):

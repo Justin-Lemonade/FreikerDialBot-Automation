@@ -523,6 +523,12 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
         origin = self._cors_origin()
         if origin:
             self.send_header("Access-Control-Allow-Origin", origin)
+            # A specific (non-'*') Access-Control-Allow-Origin must be
+            # paired with Vary: Origin so a cache never serves one
+            # origin's CORS-enabled, customer-data response to a
+            # different origin -- the allowlist echo in _cors_origin is
+            # origin-dependent, so caches must key on it too.
+            self.send_header("Vary", "Origin")
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(200)
