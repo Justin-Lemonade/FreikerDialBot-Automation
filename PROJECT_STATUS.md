@@ -22,7 +22,7 @@ Coordination-only lock for in-flight work; not authoritative over task completio
 
 | Agent/model | Task ID | Status | Scope/files reserved | Started | Commit/PR | Notes |
 |---|---|---|---|---|---|---|
-| opencode/deepseek-v4-flash-free | DLG-011 | IN PROGRESS | Add `Vary: Origin` to CORS responses: `mini_app_api.py`, `tests/test_mini_app_api.py`, `PROJECT_STATUS.md` | 2026-08-10 | branch `fix/DLG-011-vary-origin` | New bounded CORS hardening finding; registry bootstrapped on this branch since none existed. |
+| opencode/deepseek-v4-flash-free | DLG-011 | AWAITING VERIFICATION | Add `Vary: Origin` to CORS responses: `mini_app_api.py`, `tests/test_mini_app_api.py`, `PROJECT_STATUS.md` | 2026-08-10 | `922a1f0` on `fix/DLG-011-vary-origin` | New bounded CORS hardening finding: `_send_cors_header` now emits `Vary: Origin` whenever it echoes an allowed origin; 2 regression tests added. 393 passed. Registry bootstrapped on this branch since none existed. |
 
 ## Model responsibility rules
 
