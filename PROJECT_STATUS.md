@@ -155,6 +155,27 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Required result: add the current frontend test command without duplicating the full validation policy.
 - Status: **READY TO DELEGATE**.
 
+### DLG-009 — Fix `--no-mini-app` launcher flag mismatch
+
+- Priority: Medium
+- Owner: smaller coding model
+- Evidence: the launcher documents `--no-mini-app`, but the implementation checks the differently spelled `--no-mini_app` form. This makes the documented switch ineffective.
+- Required result: make the implementation accept the documented flag exactly as written, while preserving the existing default behavior and any intentionally supported compatibility form only if current code clearly requires it.
+- Scope: launcher/entrypoint only; no Mini App architecture changes.
+- Verification: inspect parser/help text and add or run a focused argument-parsing check demonstrating that `--no-mini-app` actually disables Mini App startup.
+- Escalation: stop if fixing the flag requires redesigning startup ownership or changing unrelated CLI behavior.
+- Status: **READY TO DELEGATE**.
+
+### DLG-010 — Remove inline Telegram import cleanup opportunity
+
+- Priority: Low
+- Owner: smaller coding model
+- Evidence: Telegram import handling still contains an inline implementation that can be cleaned up without changing the importer workflow.
+- Required result: make the smallest deterministic cleanup possible, preserving behavior exactly.
+- Constraint: no importer workflow redesign, parsing changes, or UX changes.
+- Verification: focused tests plus diff review.
+- Status: **READY TO DELEGATE only after the exact inline target is re-confirmed at execution time**.
+
 ## Findings: verification / audit work
 
 ### VERIFY-009 — Triage all open Dependabot PRs
@@ -189,6 +210,32 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Evidence: `SECURITY_AUDIT_REPORT.md` identifies `_API_PATHS` as a security boundary and requires every new route to be added to the auth gate.
 - Required result: every future route change must be reviewed against authentication and authorization expectations.
 - Status: **ONGOING SECURITY CONTROL, not a one-off bug.**
+
+### VERIFY-013 — Investigate importer archive-directory wiring
+
+- Priority: Medium
+- Owner: smaller review model first; Claude if semantics or architecture are unclear
+- Evidence: `importer.py` exposes `ORIGINALS_DIR` and `IMPORTS_DIR` globals that are initialized to `None` and conditionally used. The audit report flagged this as potentially incomplete archival wiring.
+- Required result: trace configuration, initialization, call sites, and actual runtime behavior to determine whether uploaded originals/imports are correctly archived.
+- Constraint: investigation first; do not invent directory semantics or change persistence behavior.
+- Escalation: if configuration ownership or archival semantics are unclear, stop with evidence for Claude/user.
+- Status: **READY AS A READ-ONLY INVESTIGATION.**
+
+### VERIFY-014 — Review API route/documentation parity
+
+- Priority: Low
+- Owner: smaller review model
+- Evidence: `/queue/resume` exists in the current Mini App API but is not consistently represented in architecture/API documentation.
+- Required result: compare implemented Mini App routes with documented routes and report concrete mismatches. Documentation changes may be delegated separately once verified.
+- Status: **READY AS A REVIEW TASK.**
+
+### VERIFY-015 — Review API auth-boundary coverage after route changes
+
+- Priority: Medium
+- Owner: smaller review model
+- Evidence: authentication is implemented through an explicit API-path boundary. This is a recurring maintenance risk whenever endpoints are added.
+- Required result: inspect the current route list against the auth gate and report any actual mismatch; do not redesign authentication.
+- Status: **READY AS A VERIFICATION TASK.**
 
 ## Findings: known product/architecture work that must not be delegated yet
 
@@ -234,6 +281,14 @@ Recent history records backend counts of 330, 332, 334, 342, and 348 as successi
 
 The previous delegation template contained no current GitHub PR inventory. The 18 open dependency PRs are now explicitly tracked here so they cannot be mistaken for unowned or nonexistent work.
 
+### STATE-023 — API documentation drift: `/queue/resume`
+
+The current API exposes `/queue/resume`, but architecture/API documentation does not consistently show it. This is a low-priority documentation-maintenance issue, not evidence that the endpoint itself is broken.
+
+### STATE-024 — Paid terminology needs a single documented contract
+
+The code/UI may use `Paid` while the actual product semantics remain unresolved. Keep the terminology mismatch visible, but do not allow a documentation fix to silently define what Paid is supposed to do.
+
 ## Findings: security posture
 
 The security audit remains substantially resolved: Mini App Telegram auth, shared admin authorization, admin-gated export, restricted CORS, and denied-admin audit logging are implemented. The security document still correctly identifies three ongoing controls: new routes must join the auth boundary, the anonymous development escape hatch must never be enabled outside local testing, and future route growth must be checked for auth/authorization drift.
@@ -248,6 +303,110 @@ No new confirmed security vulnerability was established by this audit. The stale
 - Major dependency PRs should not be merged solely because they are generated by Dependabot.
 - PR #5 is explicitly open and unmerged; GitHub reports it as not mergeable in its current state, and it has no submitted reviews.
 
+## Future improvements — low priority / not current blockers
+
+These are intentionally separated from the actionable backlog. They are ideas or technical-quality improvements that could make the project stronger, but they should not distract Claude or smaller models from current product work. They only become active tasks after confirming that the benefit still outweighs the complexity.
+
+### FUT-001 — Improve operational observability
+
+- Priority: Low
+- Potential value: make long-running bot failures, API errors, importer failures, queue anomalies, and restart events easier to diagnose.
+- Possible direction: structured event logging and clearer correlation/session identifiers.
+- Do not implement as a broad logging rewrite without measuring the current diagnostic gaps.
+
+### FUT-002 — Add targeted performance baselines
+
+- Priority: Low
+- Potential value: establish simple measurements for customer search, queue operations, importer processing, API latency, and statistics generation before optimization becomes necessary.
+- Trigger: only when real data or profiling shows a bottleneck.
+
+### FUT-003 — Reduce responsibility concentration in large modules
+
+- Priority: Low
+- Potential value: modules such as the database/API layers may become easier to maintain if responsibilities grow further.
+- Trigger: refactor only when a concrete maintenance problem exists; avoid splitting files merely to reduce line count.
+- Owner: Claude/frontier for architecture; smaller models only for mechanical sub-refactors with explicit boundaries.
+
+### FUT-004 — Consolidate duplicated status/outcome vocabulary
+
+- Priority: Low
+- Potential value: reduce the risk of Telegram, Mini App, database, statistics, and UI layers drifting into slightly different names for the same state.
+- Trigger: revisit when another state/outcome feature is added.
+- Owner: Claude first because this may affect business semantics.
+
+### FUT-005 — Consolidate duplicated process-management logic
+
+- Priority: Low
+- Potential value: reduce divergence between launcher/process-management paths.
+- Trigger: only if a concrete bug or maintenance burden is demonstrated.
+
+### FUT-006 — Review automatic restart behavior
+
+- Priority: Low
+- Potential value: distinguish recoverable transient failures from failures that should stop the process and alert an operator.
+- Trigger: after operational usage reveals restart loops or hidden failures.
+- Owner: Claude/operations decision first.
+
+### FUT-007 — Profile customer search at realistic scale
+
+- Priority: Low
+- Potential value: determine whether current search logic and indexing remain adequate as customer volume grows.
+- Trigger: benchmark with representative data before changing queries or schema.
+
+### FUT-008 — Expand backend coverage around operational modules
+
+- Priority: Low
+- Potential value: strengthen regression protection around importer, queue, statistics, and API integration boundaries.
+- Constraint: add tests for defined behavior; do not use tests as a reason to invent new behavior.
+- Smaller models can handle focused test additions once target behavior is explicit.
+
+### FUT-009 — Review AI-provider timeout/failover behavior under real failures
+
+- Priority: Low
+- Potential value: ensure parser failover behaves predictably during timeout, rate-limit, malformed-response, and provider-outage scenarios.
+- Trigger: reproduce or observe a real failure mode before changing retry/failover policy.
+- Owner: Claude for policy; smaller model for bounded regression tests.
+
+### FUT-010 — Harden local-development data handling before wider deployment
+
+- Priority: Low now; potentially High before multi-user/bank deployment
+- Potential value: improve encryption, secret handling, local database protection, backup/restore controls, and operational isolation before the system is used with materially sensitive production data.
+- Trigger: deployment-readiness review.
+- Owner: Claude/security architecture + user/IT policy; not a small-model design task.
+
+### FUT-011 — Define deployment/operations model for multiple concurrent instances
+
+- Priority: Low now; High before bank-wide deployment
+- Potential value: establish process isolation, shared database strategy, job ownership, locking, configuration, secrets, backups, and observability for multiple simultaneous users/instances.
+- Trigger: when moving from local/single-instance use toward shared server deployment.
+- Owner: Claude + user/IT architecture.
+
+### FUT-012 — Improve documentation generation/consistency checks
+
+- Priority: Low
+- Potential value: detect when endpoint lists, commands, test instructions, and status claims drift from code.
+- Trigger: if documentation drift continues after the current cleanup.
+- Smaller model may implement narrow checks once the desired source-of-truth rules are defined.
+
+### FUT-013 — Establish a lightweight frontend accessibility regression checklist
+
+- Priority: Low
+- Potential value: protect touch targets, keyboard/focus behavior where relevant, labels, contrast, and error-state readability as the UI evolves.
+- Owner: Claude defines the UX standard; smaller models can perform bounded checks.
+
+### FUT-014 — Review frontend bundle/runtime performance
+
+- Priority: Low
+- Potential value: identify unnecessary dependencies, oversized assets, or expensive rendering once the UI stabilizes.
+- Trigger: after the major UI pass, not during active redesign.
+
+### FUT-015 — Add backup/restore verification procedures
+
+- Priority: Low now; High before production deployment
+- Potential value: ensure customer, queue, session, and statistics data can be recovered predictably.
+- Trigger: before production or multi-user deployment.
+- Owner: Claude/operations; smaller models can test a defined procedure.
+
 ## Verification-only queue
 
 - Verify CORS has no wildcard fallback.
@@ -259,6 +418,9 @@ No new confirmed security vulnerability was established by this audit. The stale
 - Verify current Vitest tests and CI remain aligned.
 - Verify documentation claims against live code after substantial passes.
 - Triage open Dependabot PRs before assigning any dependency work.
+- Verify importer archive-directory wiring (`VERIFY-013`).
+- Verify route/documentation parity (`VERIFY-014`).
+- Verify auth-boundary coverage after API route changes (`VERIFY-015`).
 
 ## Escalation rules
 
@@ -296,11 +458,13 @@ A delegated task is complete only when scope remained bounded, required checks p
 
 ## Current recommended next actions
 
-1. Delegate DLG-005 through DLG-008 as small cleanup/documentation tasks.
+1. Delegate DLG-005 through DLG-010 as small cleanup/documentation tasks, with DLG-010 requiring execution-time reconfirmation.
 2. Have a smaller model perform VERIFY-009/010 dependency-PR triage without merging major migrations.
-3. Have Claude perform the dedicated responsive UI audit and decide the next Settings/UI pass.
-4. Keep product decisions above out of the smaller-model queue until explicitly resolved.
-5. After the next Claude pass, run a fresh repository-wide delegation audit and reconcile this file against the new HEAD.
+3. Have a smaller model perform VERIFY-013 through VERIFY-015 as bounded read-only audits.
+4. Have Claude perform the dedicated responsive UI audit and decide the next Settings/UI pass.
+5. Keep product decisions above out of the smaller-model queue until explicitly resolved.
+6. Treat FUT-001 through FUT-015 as a low-priority improvement reservoir, not active work, unless a trigger makes one relevant.
+7. After the next Claude pass, run a fresh repository-wide delegation audit and reconcile this file against the new HEAD.
 
 ## Delegation audit metadata
 
@@ -308,6 +472,8 @@ A delegated task is complete only when scope remained bounded, required checks p
 - Audited HEAD: `9f89cf9619f8d454268a3e18a88a2cdca5a5b313`
 - Last control-center template update: 2026-08-09
 - Current repository has 18 open Dependabot PRs and no open Issues.
-- Known stale documentation found: UI/UX testing gap and Vitest config comment.
+- Known stale documentation found: UI/UX testing gap, Vitest config comment, and API route/documentation parity around `/queue/resume`.
 - Known stale repository artifacts found: `_security_check.py`, `_install_err.log`.
+- New verified delegation candidates added after independent review of an external AI audit: DLG-009, DLG-010, VERIFY-013, VERIFY-014, VERIFY-015.
+- Low-priority future-improvement reservoir added after independent review: FUT-001 through FUT-015.
 - Next full audit trigger: after the next substantial Claude pass, dependency migration, or architecture change.
