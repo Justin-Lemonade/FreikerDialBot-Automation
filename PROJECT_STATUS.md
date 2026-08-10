@@ -184,19 +184,26 @@ The audit covered the canonical documentation, repository tree, frontend structu
 
 - Priority: High
 - Owner: smaller review model for mechanical triage; Claude for major migrations
-- Current state: 18 open Dependabot PRs exist.
-- Safe/minor candidates to review first: #1 setup-python 5→7, #2 setup-node 4→7, #3 python-telegram-bot 22.8, #4 checkout 4→7, #6 openpyxl, #8 Vite 8.1.4→8.2.0, #9 python-dotenv, #13 oxlint, #14 react-dom patch, #15 React patch, #16 plugin-react patch, #17 @types/node, #18 autoprefixer.
-- Major/high-risk migrations requiring Claude review before merge: #5 OpenAI 1→2, #7 pytest 8→9, #10 pytest-asyncio 0→1, #11 Tailwind 3→4, #12 TypeScript 6→7.
-- Important evidence: PR #5 changes only the OpenAI version constraint; `ai_parser.py` uses `AsyncOpenAI`, `RateLimitError`, `APIError`, and `chat.completions.create`, so the migration requires actual test/review rather than assuming a dependency-only change is safe. PR #11 is a Tailwind major migration and removes the Tailwind 3 dependency tree while the current repo still has a Tailwind 3-style `tailwind.config.js` and `postcss.config.js`; it is not a mechanical merge.
-- No review submissions were found on the inspected major PRs #5, #11, and #12.
-- Status: **READY AS A VERIFICATION/REVIEW TASK; do not blindly merge dependency PRs.**
+- Current state: 18 named Dependabot dependency branches exist on origin (plus 2 consolidated `multi-*` npm branches), all surfaced as open Dependabot PRs. No GitHub API access was available to this maintenance agent (unauthenticated API returned 403), so the live branch refs themselves were used as the source of truth.
+- Triage result (2026-08-10, against `main` HEAD `ce3a147`): **every open Dependabot branch is stale** and cannot be merged as-is.
+  - All pip and github-actions branches are based on `2de2386` and are 65 commits behind `main`.
+  - All npm branches (including the two `multi-*` consolidated branches) are based on `4e821b4` and are 18 commits behind `main`.
+  - Because these branch points predate the DLG-005..010 and VERIFY-013..015 work, merging any npm branch as-is would revert that completed work (re-adding `_security_check.py`/`_install_err.log`, removing the new tests, and reverting `bot.py`/`importer.py`/`mini_app_api.py` changes). The diff of each npm branch against `main` is a large net-revert, not a clean bump.
+  - `actions/checkout 4→7` is additionally a direct functional conflict: its branch predates the CI's Node 20→22 bump and the added Unit tests step, and its diff would revert `node-version` back to "20" and delete the `npm run test` step. This is a stale/conflicting PR, not a safe merge.
+- Actual proposed bumps (from branch diffs at their merge-bases):
+  - pip: `openai 1.x→2.52`, `pytest 8→9.1.1`, `pytest-asyncio 0.23→1.4`, `python-telegram-bot 22.0→22.8`, `python-dotenv 1.0.1→1.2.2`, `openpyxl 3.1.0→3.1.5`.
+  - github-actions: `checkout 4→7`, `setup-node 4→7`, `setup-python 5→7`.
+  - npm: `autoprefixer 10.4.20→10.5.4`, `oxlint 1.71→1.77`, `@types/node 24→26`, `vite 8.1.1→8.2.0`, `@vitejs/plugin-react 6.0.3→6.0.5`, `typescript 6→7`, `tailwindcss 3→4`, plus consolidated `react`/`react-dom`/`@types/react`/`@types/react-dom` patch bumps.
+- Major/high-risk migrations requiring Claude review before merge: OpenAI 1→2, pytest 8→9, pytest-asyncio 0→1, Tailwind 3→4, TypeScript 6→7. These match the existing `GAP-019` entries.
+- Recommended action: Dependabot should be allowed to rebase/refresh these branches onto current `main` before any are considered; none should be merged in their current stale state. The `checkout 4→7` branch in particular should be refreshed or closed.
+- Status: **COMPLETED — triage recorded; no dependency merged.**
 
 ### VERIFY-010 — Recheck CI/action dependency state
 
 - Priority: Medium
 - Evidence: current `.github/workflows/ci.yml` still uses `actions/checkout@v4`, `actions/setup-python@v5`, and `actions/setup-node@v4`, while open Dependabot PRs propose newer major versions.
 - Required result: determine whether each action PR is compatible with current CI and whether any PR is stale/conflicting.
-- Status: **READY TO DELEGATE as review only.**
+- Status: **COMPLETED** — see VERIFY-009. All three action branches are 65 commits behind `main`. The `checkout 4→7` branch is a direct functional conflict with current CI (it would revert the Node 22 setting and delete the Unit tests step); `setup-node 4→7` and `setup-python 5→7` are stale but otherwise clean version bumps. None should be merged in their current state.
 
 ### VERIFY-011 — Screen-by-screen responsive Mini App audit
 
@@ -464,9 +471,9 @@ A delegated task is complete only when scope remained bounded, required checks p
 
 ## Current recommended next actions
 
-1. Delegate DLG-005 through DLG-010 as small cleanup/documentation tasks, with DLG-010 requiring execution-time reconfirmation.
-2. Have a smaller model perform VERIFY-009/010 dependency-PR triage without merging major migrations.
-3. Have a smaller model perform VERIFY-013 through VERIFY-015 as bounded read-only audits. VERIFY-014 and VERIFY-015 are now complete.
+1. DLG-005 through DLG-010 (small cleanup/documentation) — completed.
+2. VERIFY-009/010 (Dependabot PR triage) — completed. All 18 branches are stale; none should be merged without a Dependabot rebase.
+3. VERIFY-013 through VERIFY-015 (bounded audits) — completed.
 4. Have Claude perform the dedicated responsive UI audit and decide the next Settings/UI pass.
 5. Keep product decisions above out of the smaller-model queue until explicitly resolved.
 6. Treat FUT-001 through FUT-015 as a low-priority improvement reservoir, not active work, unless a trigger makes one relevant.
