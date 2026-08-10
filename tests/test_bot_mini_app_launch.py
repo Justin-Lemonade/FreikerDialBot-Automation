@@ -4,7 +4,8 @@ bot.py previously never referenced Settings.mini_app_url anywhere --
 these lock in the two behaviors that make the Mini App reachable from
 Telegram: the /app command's fallback message when unconfigured vs. its
 WebApp button when configured, and _post_init setting the appropriate
-chat menu button.
+chat menu button, and _should_skip_mini_app correctly honoring the
+documented --no-mini-app flag / DISABLE_MINI_APP env override.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from telegram import MenuButtonCommands, MenuButtonWebApp
 
-from bot import _post_init, app_command
+from bot import _post_init, _should_skip_mini_app, app_command
 from config import Settings
 
 
@@ -120,3 +121,48 @@ async def test_post_init_falls_back_to_commands_menu_when_url_is_not_https():
 
     _args, kwargs = application.bot.set_chat_menu_button.call_args
     assert isinstance(kwargs["menu_button"], MenuButtonCommands)
+
+
+# --- DLG-009: --no-mini-app flag acceptance ---
+
+
+def test_should_skip_mini_app_with_documented_hyphen_flag():
+    """The documented flag is --no-mini-app (hyphen), exactly as passed
+    by start_mini_app.py. It must actually be recognized, unlike the
+    previously-buggy underscore spelling it was checking for.
+    """
+    assert _should_skip_mini_app(["bot.py", "--no-mini-app"]) is True
+
+
+def test_should_not_skip_mini_app_without_flag():
+    """Default behavior: no flag, no env override -> Mini App starts."""
+    assert _should_skip_mini_app(["bot.py"]) is False
+
+
+def test_should_skip_mini_app_with_disable_env_var(monkeypatch):
+    """DISABLE_MINI_APP=1 env override must also skip the Mini App
+    stack, for CI and minimal deployments that can't pass CLI flags.
+    """
+    monkeypatch.setenv("DISABLE_MINI_APP", "1")
+    assert _should_skip_mini_app(["bot.py"]) is True
+
+
+def test_should_not_skip_mini_app_with_env_var_unset(monkeypatch):
+    monkeypatch.delenv("DISABLE_MINI_APP", raising=False)
+    assert _should_skip_mini_app(["bot.py"]) is False
+
+
+def test_should_not_skip_mini_app_with_env_var_zero(monkeypatch):
+    """DISABLE_MINI_APP=0 must NOT skip the Mini App stack."""
+    monkeypatch.setenv("DISABLE_MINI_APP", "0")
+    assert _should_skip_mini_app(["bot.py"]) is False
+
+
+def test_old_underscore_form_is_not_a_skip_flag(monkeypatch):
+    """The old buggy check looked for --no-mini_app (underscore), which
+    is never produced by any other call site. It must NOT be treated as
+    a valid skip flag, so that the real documented flag is tested in
+    isolation.
+    """
+    monkeypatch.delenv("DISABLE_MINI_APP", raising=False)
+    assert _should_skip_mini_app(["bot.py", "--no-mini_app"]) is False
