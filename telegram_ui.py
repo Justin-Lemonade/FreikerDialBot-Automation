@@ -14,7 +14,6 @@ from customer_ui import handle_potential_edit_block
 from importer import ImporterError, ImportResult, Importer
 from logger import log
 from queue_ui import completion_keyboard, resume as queue_resume
-from validation import load_json_array, ValidationError
 
 
 PROGRESS_STAGES = [
@@ -358,9 +357,11 @@ async def handle_json_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """Import from an uploaded .json file -- sidesteps Telegram's message
     length limit entirely, which is the real fix for long customer lists.
 
-    Uses load_json_array directly (bypassing the import_text heuristic) so
-    malformed JSON is caught immediately rather than being silently routed
-    to the AI text parser.
+    Delegates to importer.import_text(), which routes JSON-formatted input
+    through _import_json (raising ImporterError for malformed JSON) while
+    non-JSON input falls through to the AI text parser. Validation is
+    centralized in the importer so inline JSON-parsing logic isn't
+    duplicated here.
     """
     progress = await update.effective_message.reply_text("\u23f3 Receiving data...")
 
@@ -377,17 +378,6 @@ async def handle_json_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     except Exception:
         log.exception("JSON file download failed")
         await progress.edit_text("Could not download this file. Please try again.")
-        return
-
-    # Validate JSON structure before handing off to the importer so errors
-    # are deterministic and don't get misrouted to the AI text parser.
-    try:
-        raw_json = text.strip()
-        if raw_json.startswith("{"):
-            raw_json = f"[{raw_json}]"
-        load_json_array(raw_json)  # raises ValidationError for bad JSON
-    except ValidationError as exc:
-        await progress.edit_text(f"Invalid JSON: {exc}")
         return
 
     importer = importer_from_context(context)
