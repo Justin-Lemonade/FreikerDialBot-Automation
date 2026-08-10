@@ -7,6 +7,7 @@ import { SessionComplete } from './pages/SessionComplete';
 import { Commands } from './pages/Commands';
 import { Search } from './pages/Search';
 import { CustomerDetail } from './pages/CustomerDetail';
+import { Upload } from './pages/Upload';
 import { useSession } from './hooks/useSession';
 import { useCustomer } from './hooks/useCustomer';
 import { useTelegram } from './hooks/useTelegram';
@@ -277,6 +278,17 @@ const App = () => {
       );
     }
 
+    if (screen === 'upload') {
+      return (
+        <Upload
+          onBack={() => setScreen('home')}
+          onImported={() => {
+            refreshSession();
+          }}
+        />
+      );
+    }
+
     // Landing: the real Home screen -- a command center, not the
     // calling workflow (UI pass 4). Always what 'home' means and
     // always what the bottom nav's Home button returns to.
@@ -284,10 +296,7 @@ const App = () => {
       <Landing
         session={session}
         onContinueSession={() => setScreen('calling')}
-        onOpenUpload={() => {
-          /* No-op: the Upload button is disabled (see Landing.tsx)
-             until a real Mini App import endpoint exists. */
-        }}
+        onOpenUpload={() => setScreen('upload')}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenSearch={() => {
           setPendingSearchQuery(null);

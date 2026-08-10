@@ -1,4 +1,4 @@
-export type Screen = 'home' | 'calling' | 'commands' | 'search' | 'statistics' | 'complete' | 'customerDetail';
+export type Screen = 'home' | 'calling' | 'commands' | 'search' | 'statistics' | 'complete' | 'customerDetail' | 'upload';
 
 /**
  * Mirrors MiniAppService._customer_payload() exactly. Financial/status
@@ -112,6 +112,17 @@ export interface StatisticsPayload {
   sessions: number;
   customersContacted: number;
   bestDay: string;
+}
+
+/** Mirrors MiniAppService.import_data()'s response exactly. */
+export interface ImportResult {
+  ok: boolean;
+  importedCount?: number;
+  flaggedCount?: number;
+  sessionId?: number | null;
+  errors?: string[];
+  verificationWarnings?: string[];
+  error?: string;
 }
 
 /** Mirrors MiniAppService.get_settings()/update_settings() exactly.

@@ -73,20 +73,13 @@ export const Landing = ({ session, onContinueSession, onOpenUpload, onOpenSettin
               ▶ CONTINUE SESSION
             </button>
           ) : (
-            <>
-              <button
-                onClick={onOpenUpload}
-                disabled
-                title="Not yet available -- import customer data via Telegram chat with the bot for now"
-                className="retro-button min-h-[56px] w-full font-display text-xs disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ background: 'var(--accent-green)', color: 'var(--accent-green-text)', border: '2px solid var(--accent-green-strong)' }}
-              >
-                UPLOAD CONTACTS
-              </button>
-              <p className="font-data text-sm" style={{ color: 'var(--text-dim)' }}>
-                Coming soon — use Telegram chat with the bot for now.
-              </p>
-            </>
+            <button
+              onClick={onOpenUpload}
+              className="retro-button min-h-[56px] w-full font-display text-xs"
+              style={{ background: 'var(--accent-green)', color: 'var(--accent-green-text)', border: '2px solid var(--accent-green-strong)' }}
+            >
+              UPLOAD CONTACTS
+            </button>
           )}
 
           {/* Secondary actions -- Search / Commands / Settings all
@@ -115,6 +108,15 @@ export const Landing = ({ session, onContinueSession, onOpenUpload, onOpenSettin
           >
             ⚙ SETTINGS
           </button>
+          {hasQueue && (
+            <button
+              onClick={onOpenUpload}
+              className="retro-button min-h-[44px] w-full font-display text-[9px]"
+              style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
+            >
+              UPLOAD MORE CONTACTS
+            </button>
+          )}
         </div>
       </div>
     </div>

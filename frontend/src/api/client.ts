@@ -210,4 +210,12 @@ export const api = {
     const blob = await response.blob();
     return { blob, filename };
   },
+
+  /** POST /import -- runs the same real Importer pipeline the Telegram
+   * bot's /upload, JSON-file, and Excel-file handlers use. No admin
+   * gate, matching the bot (only /export is admin-only). `data` is
+   * either the raw JSON text ('json') or the file's base64-encoded
+   * bytes ('xlsx') -- see importFile below for the FileReader glue. */
+  importData: (format: 'json' | 'xlsx', data: string) =>
+    post<import('../types').ImportResult>('/import', { format, data }),
 };
