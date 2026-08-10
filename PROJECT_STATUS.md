@@ -16,6 +16,14 @@ GitHub repository contents are authoritative. Documentation describes intent; li
 
 This is the operational control layer for bounded work that can be delegated to smaller, older, weaker, or less capable coding/review models. Do not create a separate delegation Markdown file.
 
+## Active Work Registry
+
+Coordination-only lock for in-flight work; not authoritative over task completion (live GitHub state is). See `AGENTS.md` "Active-work registry rules".
+
+| Agent/model | Task ID | Status | Scope/files reserved | Started | Commit/PR | Notes |
+|---|---|---|---|---|---|---|
+| opencode/deepseek-v4-flash-free | DLG-011 | IN PROGRESS | Add `Vary: Origin` to CORS responses: `mini_app_api.py`, `tests/test_mini_app_api.py`, `PROJECT_STATUS.md` | 2026-08-10 | branch `fix/DLG-011-vary-origin` | New bounded CORS hardening finding; registry bootstrapped on this branch since none existed. |
+
 ## Model responsibility rules
 
 ### Claude / frontier / user decision territory
