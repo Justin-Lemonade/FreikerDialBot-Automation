@@ -13,6 +13,7 @@ from backend import Backend, build_backend
 from config import BASE_DIR, Settings, load_settings
 from database import Database
 from export_engine import EXPORTERS, ExportError, export_customers
+from importer import ImporterError
 from queue_engine import QueueEngine
 import security
 from session_manager import SessionManager
@@ -34,6 +35,7 @@ class MiniAppService:
         self.statistics = self.backend.statistics
         self.session_manager = self.backend.session_manager
         self.queue_engine = self.backend.queue_engine
+        self.importer = self.backend.importer
 
         # Settings drives auth (bot_token for initData verification,
         # admin_user_ids for /export). Falls back to real environment
@@ -389,6 +391,66 @@ class MiniAppService:
             self.queue_engine.unblacklist_phone(phone, telegram_user_id=telegram_user_id)
         return {"ok": True, "phone": phone, "blacklisted": blacklisted}
 
+    def import_data(self, import_format: str, data: str, telegram_user_id: int | None = None) -> dict[str, Any]:
+        """Runs the same Importer pipeline the Telegram bot's /upload,
+        JSON-file, and Excel-file handlers use (self.importer, from
+        backend.py's shared Backend) -- the Mini App previously had no
+        import capability of its own; every import had to go through
+        Telegram chat. No new business logic here, just a new frontend
+        for the existing pipeline.
+
+        import_format is "json" (data is the raw JSON text, same as a
+        pasted/uploaded .json file) or "xlsx" (data is the file's bytes,
+        base64-encoded -- the Mini App has no multipart upload handling,
+        so the frontend reads the picked File as base64 and posts it as
+        a JSON string field like everything else this API accepts).
+
+        Importer.import_text()/import_xlsx() are async (they may call
+        out to the AI parser for free-text/image imports, though "json"
+        here always short-circuits to the deterministic JSON path
+        before touching that). This whole service is a plain
+        ThreadingHTTPServer handler with no running event loop, so each
+        request runs its own via asyncio.run() -- safe because
+        ThreadingHTTPServer gives every request its own thread, so
+        there's never a second asyncio.run() call competing on the same
+        thread.
+        """
+        import asyncio
+
+        tmp_path: Path | None = None
+        try:
+            if import_format == "json":
+                result = asyncio.run(self.importer.import_text(data))
+            elif import_format == "xlsx":
+                import base64
+                import binascii
+                import tempfile
+
+                try:
+                    raw_bytes = base64.b64decode(data, validate=True)
+                except (binascii.Error, ValueError):
+                    return {"ok": False, "error": "Could not decode file data (expected base64)."}
+                with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                    tmp.write(raw_bytes)
+                    tmp_path = Path(tmp.name)
+                result = asyncio.run(self.importer.import_xlsx(tmp_path))
+            else:
+                return {"ok": False, "error": f"Unsupported import format: '{import_format}'. Use 'json' or 'xlsx'."}
+        except ImporterError as exc:
+            return {"ok": False, "error": str(exc)}
+        finally:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
+
+        return {
+            "ok": True,
+            "importedCount": result.imported_count,
+            "flaggedCount": result.flagged_count,
+            "sessionId": result.session_id,
+            "errors": result.errors,
+            "verificationWarnings": result.verification_warnings,
+        }
+
     def export(self, export_format: str, telegram_user_id: int | None = None) -> tuple[bytes, str, str] | dict[str, Any]:
         """Mirrors admin_commands.export(): same source data, same
         export_engine call, same admin_action audit event -- just
@@ -468,6 +530,7 @@ _API_PATHS = frozenset({
     "/customer/blacklist",
     "/phone/blacklist",
     "/settings",
+    "/import",
     "/export",
 })
 
@@ -680,6 +743,19 @@ class MiniAppRequestHandler(BaseHTTPRequestHandler):
         if path == "/settings" and method == "POST":
             payload = self._parse_json(body)
             result = self.service.update_settings(payload)
+            self._json(200 if result.get("ok") else 400, result)
+            return True
+        if path == "/import" and method == "POST":
+            # No admin gate here -- mirrors the Telegram bot's own
+            # /upload, JSON-file, and Excel-file handlers, none of
+            # which require admin either. Only /export is admin-only.
+            payload = self._parse_json(body)
+            import_format = str(payload.get("format") or "").lower()
+            data = payload.get("data")
+            if not data or not isinstance(data, str):
+                self._json(400, {"ok": False, "error": "Missing 'data' field."})
+                return True
+            result = self.service.import_data(import_format, data, telegram_user_id=telegram_user_id)
             self._json(200 if result.get("ok") else 400, result)
             return True
         if path == "/export" and method == "GET":

@@ -1051,3 +1051,118 @@ class TestAllowedOriginsSetting:
     def test_does_not_include_an_arbitrary_origin(self):
         settings = Settings(telegram_bot_token=TEST_BOT_TOKEN, openai_api_key=None)
         assert "https://evil.example.com" not in settings.mini_app_allowed_origins
+
+
+class TestImportEndpoint:
+    """POST /import -- the Mini App previously had no import capability
+    of its own (importing was Telegram-only). This runs the same real
+    Importer pipeline (self.backend.importer) as the bot's /upload,
+    JSON-file, and Excel-file handlers, not a separate reimplementation.
+    """
+
+    def test_import_json_inserts_customers(self, api_server):
+        server, service = api_server
+        payload = {
+            "format": "json",
+            "data": json.dumps(
+                [
+                    {"loan_number": "mi-1", "first_name": "Mini", "last_name": "App",
+                     "phone_numbers": ["+15550001111"], "balance": "100", "days_overdue": "5"},
+                ]
+            ),
+        }
+        status, result = _request_json(server, "/import", method="POST", payload=payload, service=service)
+        assert status == 200
+        assert result["ok"] is True
+        assert result["importedCount"] == 1
+        assert service.database.count_customers() == 1
+
+    def test_import_json_creates_a_session(self, api_server):
+        server, service = api_server
+        payload = {
+            "format": "json",
+            "data": json.dumps(
+                [{"loan_number": "mi-2", "first_name": "Sess", "last_name": "Ion",
+                  "phone_numbers": ["+15550002222"], "balance": "50", "days_overdue": "2"}]
+            ),
+        }
+        status, result = _request_json(server, "/import", method="POST", payload=payload, service=service)
+        assert status == 200
+        assert result["sessionId"] is not None
+
+    def test_import_json_rejects_malformed_json(self, api_server):
+        server, service = api_server
+        payload = {"format": "json", "data": "{not valid json"}
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            _request_json(server, "/import", method="POST", payload=payload, service=service)
+        assert exc_info.value.code == 400
+
+    def test_import_rejects_unsupported_format(self, api_server):
+        server, service = api_server
+        payload = {"format": "yaml", "data": "loan_number: X"}
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            _request_json(server, "/import", method="POST", payload=payload, service=service)
+        assert exc_info.value.code == 400
+        body = json.loads(exc_info.value.read().decode("utf-8"))
+        assert "Unsupported import format" in body["error"]
+
+    def test_import_rejects_missing_data_field(self, api_server):
+        server, service = api_server
+        payload = {"format": "json"}
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            _request_json(server, "/import", method="POST", payload=payload, service=service)
+        assert exc_info.value.code == 400
+
+    def test_import_xlsx_inserts_customers(self, api_server):
+        import base64
+        import io
+
+        import openpyxl
+
+        server, service = api_server
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["Loan Number", "First Name", "Last Name", "Phone"])
+        ws.append(["mi-xlsx-1", "Xena", "Row", "+15550003333"])
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        payload = {"format": "xlsx", "data": encoded}
+        status, result = _request_json(server, "/import", method="POST", payload=payload, service=service)
+        assert status == 200
+        assert result["ok"] is True
+        assert result["importedCount"] == 1
+        assert service.database.count_customers() == 1
+
+    def test_import_xlsx_rejects_invalid_base64(self, api_server):
+        server, service = api_server
+        payload = {"format": "xlsx", "data": "not-valid-base64!!!"}
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            _request_json(server, "/import", method="POST", payload=payload, service=service)
+        assert exc_info.value.code == 400
+
+    def test_import_does_not_require_admin(self, api_server):
+        """Mirrors the Telegram bot: /upload has no admin gate, unlike
+        /export. A regular authenticated (non-admin) user can import."""
+        server, service = api_server
+        payload = {
+            "format": "json",
+            "data": json.dumps(
+                [{"loan_number": "mi-noadmin", "first_name": "No", "last_name": "Admin",
+                  "phone_numbers": ["+15550004444"], "balance": "10", "days_overdue": "1"}]
+            ),
+        }
+        status, result = _request_json(server, "/import", method="POST", payload=payload, service=service)
+        assert status == 200
+        assert result["ok"] is True
+
+    def test_import_requires_authentication(self, api_server):
+        server, service = api_server
+        payload = {"format": "json", "data": "[]"}
+        status_or_error = None
+        try:
+            _request_json(server, "/import", method="POST", payload=payload, service=None, authenticated=False)
+        except urllib.error.HTTPError as exc:
+            status_or_error = exc.code
+        assert status_or_error == 401
