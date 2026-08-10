@@ -119,7 +119,7 @@ export const MainLayout = ({
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-28 pt-4">{children}</main>
+      <main className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 pb-28 pt-4">{children}</main>
 
       {/* Bottom nav -- Home / Search / Commands. Settings lives in the
           top-right gear + slide-out drawer instead, so it isn't

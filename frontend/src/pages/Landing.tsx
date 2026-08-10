@@ -26,8 +26,18 @@ export const Landing = ({ session, onContinueSession, onOpenUpload, onOpenSettin
   const remaining = session ? Math.max(0, session.customerCount - session.currentCustomerIndex + 1) : 0;
 
   return (
-    <div className="-mx-4 -mt-4 flex min-h-[calc(100dvh-8.5rem)] flex-col retro-starfield">
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
+    // Fills exactly the space MainLayout's <main> has left after its own
+    // chrome (top bar, pt-4, and the pb-28 reserved for the fixed bottom
+    // nav) -- flex-1 on a flex-column parent, not a guessed dvh/rem
+    // constant. The previous `min-h-[calc(100dvh-8.5rem)]` assumed a
+    // fixed 8.5rem of chrome, but <main>'s own pb-28 (7rem) already
+    // reserves the bottom-nav space independently, so the two allowances
+    // stacked and this screen overflowed (forcing a scrollbar) on any
+    // viewport where the top bar wasn't exactly 1.5rem tall. Letting
+    // flexbox measure the real remaining space removes the guess
+    // entirely -- see AGENTS.md "prefer the smallest correct change."
+    <div className="-mx-4 -mt-4 flex min-h-0 flex-1 flex-col retro-starfield">
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 overflow-y-auto p-6 text-center">
         {/* Logo -- also present in the persistent top bar, but repeated
             here large and centered so this screen reads as a command
             center on its own, not a stripped-down version of another
