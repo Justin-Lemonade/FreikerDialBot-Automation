@@ -251,9 +251,9 @@ The audit covered the canonical documentation, repository tree, frontend structu
 
 ## Findings: known product/architecture work that must not be delegated yet
 
-### GAP-013 — Mini App import flow
+### GAP-013 — Mini App import flow (RESOLVED)
 
-Importing is still Telegram-side. A Mini App import workflow is a product/workflow feature and must be designed by Claude/user first. Smaller models may implement bounded pieces after the API/workflow contract exists.
+~~Importing is still Telegram-side. A Mini App import workflow is a product/workflow feature and must be designed by Claude/user first.~~ Implemented: `POST /import` (`mini_app_api.MiniAppService.import_data`) runs the same real `Importer` pipeline the Telegram bot's `/upload`/JSON-file/Excel-file handlers use — `.json` (raw text) and `.xlsx` (base64, since the Mini App's raw `BaseHTTPRequestHandler` has no multipart support) — with a real `Upload.tsx` frontend screen (file picker, real progress states, real success/error/flagged-row reporting, no simulated success). No admin gate, matching the bot's `/upload`. While implementing this, also found and fixed a real pre-existing bug: `Importer.import_xlsx()` was called by `telegram_ui.handle_xlsx_file` but had never actually been implemented anywhere — every real `.xlsx` upload via the Telegram bot itself was crashing with an unhandled `AttributeError`. Commits: `3b50ed3` (import_xlsx fix), `7af7990` (POST /import), `b560272` (Upload.tsx). AI-parsed free-text/screenshot import (the `import_text`/`import_image` AI path) remains Telegram-only for now — that needs a chat-style back-and-forth this screen doesn't have, not a technical limitation of the endpoint itself.
 
 ### GAP-014 — Settings functionality
 
