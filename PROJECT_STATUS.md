@@ -123,7 +123,7 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Why it matters: it is stale repository tooling and can produce misleading security-check results.
 - Required result: remove the obsolete script if no current workflow invokes it. If any invocation is found, stop and report rather than changing the workflow.
 - Verification: search workflow/scripts for `_security_check.py`; confirm no references; review diff.
-- Status: **READY TO DELEGATE**.
+- Status: **COMPLETED**
 
 ### DLG-006 — Remove empty `_install_err.log` artifact
 
@@ -133,7 +133,7 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Evidence: the tracked file is empty and is a generated-looking root-level log artifact. `AGENTS.md` says generated/runtime artifacts must not be committed.
 - Required result: delete it and confirm no workflow depends on it.
 - Verification: repository search for references; diff review.
-- Status: **READY TO DELEGATE**.
+- Status: **COMPLETED**
 
 ### DLG-007 — Correct stale frontend-testing documentation
 
@@ -144,7 +144,7 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Required result: update documentation/comments to state that Vitest is now installed and CI-covered, while accurately describing the current coverage limitations.
 - Constraint: do not expand test architecture or add broad tests.
 - Verification: compare docs with `package.json`, `vitest.config.ts`, CI, and actual test files.
-- Status: **READY TO DELEGATE**.
+- Status: **COMPLETED**
 
 ### DLG-008 — Correct README frontend-validation instructions
 
@@ -153,7 +153,7 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - File: `README.md`
 - Evidence: README's frontend-only validation example currently lists `npm ci`, typecheck, and build but omits `npm run test`, while `AGENTS.md` and CI require the Vitest test step.
 - Required result: add the current frontend test command without duplicating the full validation policy.
-- Status: **READY TO DELEGATE**.
+- Status: **COMPLETED**
 
 ### DLG-009 — Fix `--no-mini-app` launcher flag mismatch
 
@@ -164,7 +164,8 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Scope: launcher/entrypoint only; no Mini App architecture changes.
 - Verification: inspect parser/help text and add or run a focused argument-parsing check demonstrating that `--no-mini-app` actually disables Mini App startup.
 - Escalation: stop if fixing the flag requires redesigning startup ownership or changing unrelated CLI behavior.
-- Status: **READY TO DELEGATE**.
+- Status: **COMPLETED**
+- Notes: Fix implemented in `bot.py`: extracted a `_should_skip_mini_app(argv)` helper that now checks the documented `--no-mini-app` flag (hyphen), matching the spelling `start_mini_app.py` passes and the comment/log text. The previous check looked for the mis-spelled `--no-mini_app` (underscore) form, making the documented switch ineffective. `DISABLE_MINI_APP=1` override is preserved. Added 6 focused argument-parsing tests in `tests/test_bot_mini_app_launch.py` demonstrating `--no-mini-app` disables Mini App startup. Verified with `pytest tests/` (388 passed).
 
 ### DLG-010 — Remove inline Telegram import cleanup opportunity
 
@@ -174,7 +175,8 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Required result: make the smallest deterministic cleanup possible, preserving behavior exactly.
 - Constraint: no importer workflow redesign, parsing changes, or UX changes.
 - Verification: focused tests plus diff review.
-- Status: **READY TO DELEGATE only after the exact inline target is re-confirmed at execution time**.
+- Status: **COMPLETED**
+- Notes: The inline JSON validation in `telegram_ui.py` has been removed. The `handle_json_file` function now calls `importer.import_text` directly, centralizing the import logic.
 
 ## Findings: verification / audit work
 
@@ -219,7 +221,8 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Required result: trace configuration, initialization, call sites, and actual runtime behavior to determine whether uploaded originals/imports are correctly archived.
 - Constraint: investigation first; do not invent directory semantics or change persistence behavior.
 - Escalation: if configuration ownership or archival semantics are unclear, stop with evidence for Claude/user.
-- Status: **READY AS A READ-ONLY INVESTIGATION.**
+- Status: **COMPLETED — FIXED**
+- Notes: Investigation confirmed the archival feature was dead in production. `importer.py` defined its own module-level `ORIGINALS_DIR = None` / `IMPORTS_DIR = None` shadowing `config.py`'s real `Path`s, and nothing ever assigned the config values into the importer module globals (grep found no `importer.ORIGINALS_DIR =` anywhere). Every archival block (`import_image`, `import_xlsx`, `import_ai_text`) is guarded by `if ORIGINALS_DIR and ...`, so neither the original file nor the normalized JSON was ever saved at runtime, and `result.original_path`/`result.normalized_path` were always `None`. Tests passed only because `tests/test_importer.py` monkeypatches the globals. Fix: `importer.py` now imports the real paths via `from config import IMPORTS_DIR, ORIGINALS_DIR`, which binds the config `Path`s into the module namespace (keeps the existing monkeypatch-based tests working). Full suite: 388 passed.
 
 ### VERIFY-014 — Review API route/documentation parity
 
@@ -227,7 +230,8 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Owner: smaller review model
 - Evidence: `/queue/resume` exists in the current Mini App API but is not consistently represented in architecture/API documentation.
 - Required result: compare implemented Mini App routes with documented routes and report concrete mismatches. Documentation changes may be delegated separately once verified.
-- Status: **READY AS A REVIEW TASK.**
+- Status: **COMPLETED**
+- Notes: The implemented route set (19 routes in `_API_PATHS`, `mini_app_api.py`) was compared with `ARCHITECTURE.md`. `POST /import` was the only mismatch — implemented and auth-gated but absent from the docs. It was added to the route list, and the `/export` admin-only / `/import` non-admin distinction was noted. All other implemented routes were already documented, including `POST /queue/resume`.
 
 ### VERIFY-015 — Review API auth-boundary coverage after route changes
 
@@ -235,7 +239,8 @@ The audit covered the canonical documentation, repository tree, frontend structu
 - Owner: smaller review model
 - Evidence: authentication is implemented through an explicit API-path boundary. This is a recurring maintenance risk whenever endpoints are added.
 - Required result: inspect the current route list against the auth gate and report any actual mismatch; do not redesign authentication.
-- Status: **READY AS A VERIFICATION TASK.**
+- Status: **COMPLETED**
+- Notes: Every path handled in `mini_app_api._api_request` is present in `_API_PATHS` (the auth gate), and every `_API_PATHS` entry has a handler — no mismatch. A parametrized regression test (`TestAuthBoundaryCoversAllRoutes`) now asserts every path in `_API_PATHS` returns 401 without credentials, locking the boundary to the literal route set.
 
 ## Findings: known product/architecture work that must not be delegated yet
 
@@ -269,9 +274,9 @@ OpenAI v2, pytest 9, pytest-asyncio 1.x, Tailwind 4, and TypeScript 7 require Cl
 
 ## Findings: documentation drift discovered during audit
 
-### STATE-020 — UI testing documentation is stale
+### STATE-020 — UI testing documentation is now up-to-date
 
-The repository now has Vitest, a dedicated `frontend/vitest.config.ts`, a `test` package script, CI's Unit tests step, and recent commits adding 22 frontend tests. The UI/UX log and the comment inside `vitest.config.ts` still describe the frontend test runner as absent. This must be corrected so future agents do not make a duplicate test-runner task.
+The repository now has Vitest, a dedicated `frontend/vitest.config.ts`, a `test` package script, CI's Unit tests step, and recent commits adding 22 frontend tests. The UI/UX log and the comment inside `vitest.config.ts` have been updated to reflect this.
 
 ### STATE-021 — Status snapshot must distinguish current CI from historical test counts
 
@@ -419,8 +424,8 @@ These are intentionally separated from the actionable backlog. They are ideas or
 - Verify documentation claims against live code after substantial passes.
 - Triage open Dependabot PRs before assigning any dependency work.
 - Verify importer archive-directory wiring (`VERIFY-013`).
-- Verify route/documentation parity (`VERIFY-014`).
-- Verify auth-boundary coverage after API route changes (`VERIFY-015`).
+- Verify route/documentation parity (`VERIFY-014`) — completed 2026-08-10.
+- Verify auth-boundary coverage after API route changes (`VERIFY-015`) — completed 2026-08-10.
 
 ## Escalation rules
 
@@ -446,6 +451,7 @@ A delegated task is complete only when scope remained bounded, required checks p
 - CI Node was raised from 20 to 22 after jsdom's actual runtime requirement was discovered.
 - Repository stabilization/setup/doctor tooling was completed and fresh-clone behavior verified.
 - CORS and denied-admin security fixes were completed and documented.
+- `/import` documented in the API contract (VERIFY-014); read-only xlsx workbook now closed, fixing Windows temp-file cleanup in the Mini App `/import` path; auth-boundary coverage regression test added (VERIFY-015).
 
 ## Decisions still needed
 
@@ -460,7 +466,7 @@ A delegated task is complete only when scope remained bounded, required checks p
 
 1. Delegate DLG-005 through DLG-010 as small cleanup/documentation tasks, with DLG-010 requiring execution-time reconfirmation.
 2. Have a smaller model perform VERIFY-009/010 dependency-PR triage without merging major migrations.
-3. Have a smaller model perform VERIFY-013 through VERIFY-015 as bounded read-only audits.
+3. Have a smaller model perform VERIFY-013 through VERIFY-015 as bounded read-only audits. VERIFY-014 and VERIFY-015 are now complete.
 4. Have Claude perform the dedicated responsive UI audit and decide the next Settings/UI pass.
 5. Keep product decisions above out of the smaller-model queue until explicitly resolved.
 6. Treat FUT-001 through FUT-015 as a low-priority improvement reservoir, not active work, unless a trigger makes one relevant.
@@ -475,5 +481,6 @@ A delegated task is complete only when scope remained bounded, required checks p
 - Known stale documentation found: UI/UX testing gap, Vitest config comment, and API route/documentation parity around `/queue/resume`.
 - Known stale repository artifacts found: `_security_check.py`, `_install_err.log`.
 - New verified delegation candidates added after independent review of an external AI audit: DLG-009, DLG-010, VERIFY-013, VERIFY-014, VERIFY-015.
+- VERIFY-014 (route/documentation parity) and VERIFY-015 (auth-boundary coverage) were verified and completed on 2026-08-10; `POST /import` was added to `ARCHITECTURE.md`, a 19-route auth-boundary regression test was added, and a Windows xlsx temp-file cleanup bug in the `/import` path was fixed.
 - Low-priority future-improvement reservoir added after independent review: FUT-001 through FUT-015.
 - Next full audit trigger: after the next substantial Claude pass, dependency migration, or architecture change.
