@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 import pytest
 
+import mini_app_api
 from backend import build_backend
 from config import Settings
 from database import Database
@@ -1166,3 +1167,29 @@ class TestImportEndpoint:
         except urllib.error.HTTPError as exc:
             status_or_error = exc.code
         assert status_or_error == 401
+
+
+class TestAuthBoundaryCoversAllRoutes:
+    """Every route in _API_PATHS is a security boundary (see
+    SECURITY_AUDIT_REPORT.md's 'any route added later must be added to
+    the auth gate list' rule). The auth gate in mini_app_api.py's
+    _api_request fires before any method dispatch -- it checks only the
+    path -- so an unauthenticated request to ANY of these paths must get
+    a hard 401, regardless of which HTTP method a client happens to use.
+    This parametrized test locks that boundary to the literal route set,
+    so adding a route to _API_PATHS without putting it behind the gate
+    fails loudly instead of silently widening the surface."""
+
+    @pytest.mark.parametrize("api_path", sorted(mini_app_api._API_PATHS))
+    def test_unauthenticated_request_is_rejected_on_every_api_path(self, api_server, api_path):
+        server, _service = api_server
+        # The gate is method-independent; use POST for write-ish paths and
+        # GET otherwise so the test never depends on handler internals.
+        method = "POST" if api_path not in {"/session/current", "/customer/current", "/statistics", "/queue/upcoming", "/customer/search", "/customer/record", "/settings", "/export"} else "GET"
+        req = urllib.request.Request(
+            f"http://{server.server_address[0]}:{server.server_address[1]}{api_path}",
+            method=method,
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req, timeout=5)
+        assert exc_info.value.code == 401, f"{api_path} must require authentication"
