@@ -429,7 +429,7 @@ These are intentionally separated from the actionable backlog. They are ideas or
 - Verify frontend placeholders remain honest.
 - Verify current Vitest tests and CI remain aligned.
 - Verify documentation claims against live code after substantial passes.
-- Triage open Dependabot PRs before assigning any dependency work.
+- Triage open Dependabot PRs before assigning any dependency work — completed 2026-08-10 (VERIFY-009/010).
 - Verify importer archive-directory wiring (`VERIFY-013`).
 - Verify route/documentation parity (`VERIFY-014`) — completed 2026-08-10.
 - Verify auth-boundary coverage after API route changes (`VERIFY-015`) — completed 2026-08-10.
