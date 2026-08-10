@@ -71,7 +71,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-  } catch (networkError) {
+  } catch {
     throw new ApiError(0, 'Network request failed. Check your connection and try again.');
   }
 
