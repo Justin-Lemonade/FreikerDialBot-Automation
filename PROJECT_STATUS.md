@@ -448,6 +448,7 @@ A delegated task is complete only when scope remained bounded, required checks p
 ## Recently completed / already handled
 
 - CORS wildcard replaced with an allowlist; 8 tests added.
+- CORS `Vary: Origin` cache-hardening (DLG-011): allowed origins emit `Access-Control-Allow-Origin` paired with `Vary: Origin`; disallowed and origin-less requests emit neither header. Regression tests added (commit e276141).
 - Denied admin actions now produce `admin_action_denied`; 7 tests added.
 - Real Home/Landing screen split from calling workflow.
 - Dead Call Again/Note controls removed/replaced.

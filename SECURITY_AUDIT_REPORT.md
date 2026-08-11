@@ -62,7 +62,7 @@ The project handles customer data, call outcomes, notes, history, and exports. I
 - ✅ Shared admin authorization for Telegram and the Mini App.
 - ✅ Admin-gated export.
 - ✅ Keeping security policy in `security.py` instead of duplicating it across frontends.
-- ✅ **CORS is restricted to known origins.** `Settings.mini_app_allowed_origins` (the configured `mini_app_url`, the Vite dev server, plus `MINI_APP_EXTRA_ALLOWED_ORIGINS` for anything else) replaces the previous unconditional `*`.
+- ✅ **CORS is restricted to known origins.** `Settings.mini_app_allowed_origins` (the configured `mini_app_url`, the Vite dev server, plus `MINI_APP_EXTRA_ALLOWED_ORIGINS` for anything else) replaces the previous unconditional `*`. The API echoes only an allowlisted origin (never `*`), omits `Access-Control-Allow-Origin` entirely for disallowed or missing origins, and pairs every CORS-enabled response with `Vary: Origin` so a shared cache can never serve one allowed origin's customer-data response to a different origin (DLG-011).
 - ✅ **Denied admin attempts are audit-logged.** A new `admin_action_denied` event_type is written on every unauthorized reset/clear/summary/export attempt (Telegram) and the Mini App's own `/export` 403, alongside the existing successful-action log.
 
 ## Things to check before shipping
