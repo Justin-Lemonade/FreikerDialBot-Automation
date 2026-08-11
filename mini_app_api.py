@@ -284,6 +284,14 @@ class MiniAppService:
             return "0%"
         return f"{round((contacted / total) * 100)}%"
 
+    # The fixed, known set of CustomerCard financial fields a Display
+    # setting can honestly control. Adding a new field to CustomerCard
+    # later means adding one entry here (and one in the frontend's
+    # matching FIELD_DEFS) -- not rewriting either the setting or the
+    # card's render logic.
+    _VISIBLE_FIELD_IDS = ("daysOverdue", "monthlyPayment", "balance")
+    _DEFAULT_VISIBLE_FIELDS = "daysOverdue,monthlyPayment"
+
     def get_settings(self) -> dict[str, Any]:
         """Returns the currently-real, backend-enforced Settings values.
 
@@ -293,15 +301,29 @@ class MiniAppService:
         frontend to decide whether to move to the next customer
         automatically after an outcome; Primary Phone Preference is
         enforced by _ordered_phone_numbers/_customer_payload; Pre-ready
-        Count is read by queue_upcoming's `count` param). Anything not
-        listed here is still a UI placeholder per Settings.tsx and must
-        not be faked.
+        Count is read by queue_upcoming's `count` param; Visible Fields
+        is read by CustomerCard to decide which financial fields to
+        render). Anything not listed here is still a UI placeholder per
+        Settings.tsx and must not be faked.
         """
         raw = self.database.get_settings(
-            ["max_call_attempts", "auto_advance", "primary_phone_preference", "pre_ready_count"]
+            [
+                "max_call_attempts",
+                "auto_advance",
+                "primary_phone_preference",
+                "pre_ready_count",
+                "visible_fields",
+            ]
         )
         max_attempts_raw = raw.get("max_call_attempts")
         pre_ready_raw = raw.get("pre_ready_count")
+        visible_fields_raw = raw.get("visible_fields")
+        if visible_fields_raw is None:
+            visible_fields = self._DEFAULT_VISIBLE_FIELDS.split(",")
+        elif visible_fields_raw == "":
+            visible_fields = []
+        else:
+            visible_fields = visible_fields_raw.split(",")
         return {
             "maxCallAttempts": None if max_attempts_raw in (None, "unlimited") else int(max_attempts_raw),
             # Defaults to True: this matches the app's existing behavior
@@ -318,6 +340,12 @@ class MiniAppService:
             # Defaults to 0 ("None" in the UI): only the current customer
             # is prepared, matching today's existing on-demand behavior.
             "preReadyCount": int(pre_ready_raw) if pre_ready_raw is not None else 0,
+            # Which of the fixed known fields CustomerCard's info grid
+            # shows. Defaults to exactly what CustomerCard always showed
+            # before this setting existed (days overdue + monthly
+            # payment, balance excluded -- Pass 4 deliberately moved
+            # balance to More Info to keep the calling card compact).
+            "visibleFields": visible_fields,
         }
 
     def update_settings(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -348,6 +376,20 @@ class MiniAppService:
             if pre_ready not in (0, 1, 2, 3):
                 return {"ok": False, "error": "preReadyCount must be 0, 1, 2, or 3"}
             self.database.set_setting("pre_ready_count", str(pre_ready))
+        if "visibleFields" in fields:
+            value = fields["visibleFields"]
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                return {"ok": False, "error": "visibleFields must be a list of strings"}
+            unknown = set(value) - set(self._VISIBLE_FIELD_IDS)
+            if unknown:
+                return {"ok": False, "error": f"visibleFields contains unknown field(s): {sorted(unknown)}"}
+            # De-duplicate while preserving the fixed display order
+            # (_VISIBLE_FIELD_IDS), not whatever order the client sent
+            # -- the frontend always renders in that order anyway, so
+            # storing it pre-ordered keeps the two in sync by
+            # construction rather than by convention.
+            ordered = [field for field in self._VISIBLE_FIELD_IDS if field in value]
+            self.database.set_setting("visible_fields", ",".join(ordered))
         return {"ok": True, "settings": self.get_settings()}
 
     def pause_queue(self, telegram_user_id: int | None = None) -> dict[str, Any]:

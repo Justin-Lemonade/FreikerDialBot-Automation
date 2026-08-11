@@ -236,6 +236,7 @@ def test_settings_endpoint_defaults_to_unlimited_and_auto_advance_on(api_server)
         "autoAdvance": True,
         "primaryPhonePreference": "first",
         "preReadyCount": 0,
+        "visibleFields": ["daysOverdue", "monthlyPayment"],
     }
 
 
@@ -252,6 +253,7 @@ def test_settings_endpoint_persists_max_call_attempts(api_server):
             "autoAdvance": True,
             "primaryPhonePreference": "first",
             "preReadyCount": 0,
+            "visibleFields": ["daysOverdue", "monthlyPayment"],
         },
     }
 
@@ -433,6 +435,115 @@ def test_queue_upcoming_without_count_keeps_single_object_shape(api_server):
     status, upcoming = _request_json(server, "/queue/upcoming", service=service)
     assert status == 200
     assert upcoming["loanNumber"] == "bc-2"
+
+
+def test_primary_phone_preference_second_with_only_one_number_uses_it(api_server):
+    """Sensible fallback: a customer with only one number on file is
+    unaffected by "prefer the second number" -- there is no second
+    number to reorder to the front, so _ordered_phone_numbers's
+    len(phone_numbers) > 1 guard leaves the single number in place."""
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "pp-3",
+                "first_name": "Pref",
+                "last_name": "Three",
+                "phone_numbers": ["555"],
+                "balance": "10",
+                "days_overdue": "1",
+            }
+        ]
+    )
+    _request_json(server, "/settings", method="POST", payload={"primaryPhonePreference": "second"}, service=service)
+
+    status, customer = _request_json(server, "/customer/current", service=service)
+    assert status == 200
+    assert customer["phone"] == "555"
+    assert [entry["number"] for entry in customer["phones"]] == ["555"]
+
+
+def test_primary_phone_preference_second_with_both_numbers_blacklisted(api_server):
+    """When every number is blacklisted, first_non_blacklisted_phone's
+    own fallback (return the first candidate it was given) still
+    surfaces *some* real, on-file number rather than blanking the
+    field -- consistent with the "first" preference's existing
+    behavior for this same edge case."""
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "pp-4",
+                "first_name": "Pref",
+                "last_name": "Four",
+                "phone_numbers": ["666", "777"],
+                "balance": "10",
+                "days_overdue": "1",
+            }
+        ]
+    )
+    service.database.blacklist_phone("666")
+    service.database.blacklist_phone("777")
+    _request_json(server, "/settings", method="POST", payload={"primaryPhonePreference": "second"}, service=service)
+
+    status, customer = _request_json(server, "/customer/current", service=service)
+    assert status == 200
+    # Both numbers still show up in the full list (with a real
+    # blacklisted flag), the customer isn't left with no numbers.
+    assert customer["phone"] in ("666", "777")
+    assert {entry["number"] for entry in customer["phones"]} == {"666", "777"}
+    assert all(entry["isBlacklisted"] for entry in customer["phones"])
+
+
+def test_settings_endpoint_persists_visible_fields(api_server):
+    server, service = api_server
+    status, result = _request_json(
+        server, "/settings", method="POST", payload={"visibleFields": ["balance"]}, service=service
+    )
+    assert status == 200
+    assert result["settings"]["visibleFields"] == ["balance"]
+
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["visibleFields"] == ["balance"]
+
+
+def test_settings_endpoint_visible_fields_stores_in_fixed_order(api_server):
+    """Regardless of the order the client sends, the stored/returned
+    order always matches the fixed display order CustomerCard renders
+    in -- storing it pre-ordered keeps the two in sync by construction."""
+    server, service = api_server
+    status, result = _request_json(
+        server,
+        "/settings",
+        method="POST",
+        payload={"visibleFields": ["balance", "daysOverdue", "monthlyPayment"]},
+        service=service,
+    )
+    assert status == 200
+    assert result["settings"]["visibleFields"] == ["daysOverdue", "monthlyPayment", "balance"]
+
+
+def test_settings_endpoint_visible_fields_can_be_emptied(api_server):
+    server, service = api_server
+    status, result = _request_json(server, "/settings", method="POST", payload={"visibleFields": []}, service=service)
+    assert status == 200
+    assert result["settings"]["visibleFields"] == []
+
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["visibleFields"] == []
+
+
+def test_settings_endpoint_rejects_invalid_visible_fields(api_server):
+    server, service = api_server
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(server, "/settings", method="POST", payload={"visibleFields": ["balance", "notAField"]}, service=service)
+    assert exc_info.value.code == 400
+
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(server, "/settings", method="POST", payload={"visibleFields": "balance"}, service=service)
+    assert exc_info.value.code == 400
 
 
 def test_call_back_respects_max_call_attempts_limit(api_server):

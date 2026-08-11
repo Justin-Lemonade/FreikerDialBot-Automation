@@ -93,6 +93,8 @@ The API is organized around the same responsibilities as the backend. The curren
 
 `GET/POST /settings` also covers `primaryPhonePreference` (`"first"` | `"second"`, default `"first"`) and `preReadyCount` (`0`-`3`, default `0`). `primaryPhonePreference` reorders which stored phone number `_customer_payload` tries first when picking the auto-display/dial number, falling back through the rest (including skipping blacklisted numbers) exactly as before.
 
+`visibleFields` (list of `"daysOverdue"` | `"monthlyPayment"` | `"balance"`, default `["daysOverdue", "monthlyPayment"]`) controls which financial fields `CustomerCard`'s info grid renders. Always stored/returned pre-ordered to the fixed `_VISIBLE_FIELD_IDS` display order regardless of what order the client sent, so frontend and backend can't drift into disagreeing about field order.
+
 ### Ownership rules
 
 - The queue engine decides who is next.
