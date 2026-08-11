@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useAppSettings } from '../hooks/useAppSettings';
+import type { VisibleField } from '../types';
 
 interface Props {
   isStale?: boolean;
@@ -214,6 +215,59 @@ const PreReadyCountRow = () => {
   );
 };
 
+const VISIBLE_FIELD_OPTIONS: { label: string; value: VisibleField }[] = [
+  { label: 'Days Overdue', value: 'daysOverdue' },
+  { label: 'Monthly', value: 'monthlyPayment' },
+  { label: 'Balance', value: 'balance' },
+];
+
+/**
+ * Which financial fields CustomerCard's info grid shows. Real and
+ * backend-enforced -- see MiniAppService.get_settings/update_settings's
+ * visibleFields and CustomerCard's FIELD_DEFS. Multi-select: each chip
+ * toggles independently, and the grid on Home actually gains/loses a
+ * column as chips are toggled -- there's no separate "apply" step.
+ */
+const VisibleFieldsRow = () => {
+  const { settings, updateSettings, isSaving } = useAppSettings();
+  const toggle = (field: VisibleField) => {
+    const next = settings.visibleFields.includes(field)
+      ? settings.visibleFields.filter((f) => f !== field)
+      : [...settings.visibleFields, field];
+    updateSettings({ visibleFields: next });
+  };
+  return (
+    <div className="border-b py-3" style={{ borderColor: 'var(--border-frame)' }}>
+      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
+        Visible Fields
+      </p>
+      <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
+        Which fields show on the calling card
+      </p>
+      <div className="grid grid-cols-3 gap-1.5">
+        {VISIBLE_FIELD_OPTIONS.map((option) => {
+          const isActive = settings.visibleFields.includes(option.value);
+          return (
+            <button
+              key={option.value}
+              onClick={() => toggle(option.value)}
+              disabled={isSaving}
+              className="retro-button flex min-h-[44px] items-center justify-center px-1 text-center font-display text-[9px] disabled:opacity-50"
+              style={{
+                background: isActive ? 'var(--accent-green)' : 'var(--bg-panel)',
+                color: isActive ? 'var(--accent-green-text)' : 'var(--text-muted)',
+                border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 /** Real: reflects the actual last successful GET /session/current
  * (useSession's lastSyncedAt) and whether the app is currently showing
  * stale data (isStale) -- not a decorative "connected" dot. */
@@ -288,16 +342,32 @@ export const Settings = ({ isStale, lastSyncedAt }: Props) => {
 
       <Section title="DISPLAY">
         <SettingRow label="Compact vs Expanded Cards" description="Card density on Home" value="-" disabled />
-        <SettingRow label="Visible Fields" description="Which data shows by default" value="-" disabled />
+        <VisibleFieldsRow />
         <SettingRow label="Progress Density" description="Progress bar detail level" value="-" disabled />
         <SettingRow label="Notes Preview" description="Show latest note on the call card" value="-" disabled />
-        <SettingRow label="Show Balance / Overdue / Days" description="Which financial fields appear" value="-" disabled />
       </Section>
 
       <Section title="QUEUE">
         <PreReadyCountRow />
-        <SettingRow label="Active Queue vs New Contacts" description="Ordering between the two" value="-" disabled />
-        <SettingRow label="Resume / Restart Behavior" description="What happens on reopen" value="-" disabled />
+        {/* Not a togglable choice: the customers table is the single
+            source of queue truth (AGENTS.md "What to preserve" --
+            deterministic queue, single source of customer state).
+            New imports get a later import_timestamp and are ordered
+            by get_next_actionable_customer's ORDER BY import_timestamp
+            ASC, id ASC -- they join the same active queue after
+            everyone already waiting. A second/separate queue isn't
+            something the current architecture supports, so this row
+            documents the real behavior instead of offering a fake
+            choice between two options that don't both exist. */}
+        <SettingRow label="Active Queue vs New Contacts" description="New imports join the same active queue" value="Merged" />
+        {/* Also not a togglable choice: SessionManager.current_session
+            always derives the in-progress session live from the
+            database (see session_manager.py) -- there is no
+            browser/local session state to lose, so reopening always
+            resumes the same real session rather than offering a
+            choice between "resume" and "restart" that would require
+            inventing a second, fake session-state mechanism. */}
+        <SettingRow label="Resume / Restart Behavior" description="Reopening always resumes the live session" value="Always Resumes" />
       </Section>
 
       <Section title="SEARCH">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Customer } from '../types';
+import type { Customer, VisibleField } from '../types';
 
 interface Props {
   customer: Customer | null;
@@ -20,6 +20,12 @@ interface Props {
    * number active for next time, so the operator doesn't have to
    * re-pick it on every call to the same customer. */
   onSelectPhone?: (phone: string) => void;
+  /** Settings > Display > Visible Fields -- which of the fixed known
+   * fields below to render, and in what order. Defaults to the
+   * pre-Display-setting behavior (days overdue + monthly payment) so
+   * this component still works standalone/in tests without a settings
+   * provider. */
+  visibleFields?: VisibleField[];
 }
 
 interface InfoCellProps {
@@ -29,11 +35,10 @@ interface InfoCellProps {
   color: string;
 }
 
-/** One column of the 3-across info grid below the name (days overdue /
- * monthly payment / phone) -- matches the inspiration images' compact
- * calling-card layout exactly, rather than the previous vertical list.
- * Values wrap instead of truncating: loan/phone/amount digits are the
- * one thing on this screen an operator must never lose to an ellipsis. */
+/** One column of the info grid below the name -- matches the
+ * inspiration images' compact calling-card layout. Values wrap instead
+ * of truncating: loan/phone/amount digits are the one thing on this
+ * screen an operator must never lose to an ellipsis. */
 const InfoCell = ({ icon, label, value, color }: InfoCellProps) => (
   <div className="flex min-w-0 flex-col items-center gap-1 text-center">
     <span className="text-lg leading-none">{icon}</span>
@@ -46,17 +51,39 @@ const InfoCell = ({ icon, label, value, color }: InfoCellProps) => (
   </div>
 );
 
+/** The fixed, known set of info-grid fields, keyed the same way
+ * Settings > Display > Visible Fields refers to them (and the same way
+ * the backend's _VISIBLE_FIELD_IDS does) -- adding a new field later
+ * means adding one entry here, not restructuring this component's
+ * render logic. `value` is a function of the customer so the whole
+ * list can be built once and then filtered/ordered by whatever the
+ * operator has enabled. */
+const FIELD_DEFS: { id: VisibleField; icon: string; label: string; color: string; value: (c: Customer) => string }[] = [
+  { id: 'daysOverdue', icon: '📅', label: 'DAYS OVERDUE', color: 'var(--accent-red)', value: (c) => c.daysLate },
+  { id: 'monthlyPayment', icon: '🪙', label: 'MONTHLY', color: 'var(--text-primary)', value: (c) => c.monthlyPayment },
+  { id: 'balance', icon: '💰', label: 'BALANCE', color: 'var(--text-primary)', value: (c) => c.balance },
+];
+
+// Tailwind's static analysis needs each grid-cols-N class to appear
+// literally in source -- a template-string `grid-cols-${n}` would be
+// purged. This map is the one place that constraint lives, so
+// FIELD_DEFS above can grow independently of it (up to 4 columns
+// before the cells get too cramped to read on a narrow phone).
+const GRID_COLS_CLASS: Record<number, string> = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' };
+
+const DEFAULT_VISIBLE_FIELDS: VisibleField[] = ['daysOverdue', 'monthlyPayment'];
+
 /**
  * The ID-card / terminal-access-card signature element -- matches the
  * calling-screen inspiration images precisely: avatar + name/loan
- * number header, then a 2-column icon grid (days overdue / monthly
- * payment), then the phone-number list below. Balance and anything
- * beyond these lives in the More Info / CustomerDetail screen instead,
- * per the brief's "don't overload the main calling interface"
- * instruction -- this card is the quick-glance surface, not the
- * exhaustive one.
+ * number header, then a configurable info grid (Settings > Display >
+ * Visible Fields), then the phone-number list below. Anything not
+ * enabled in Visible Fields lives in the More Info / CustomerDetail
+ * screen instead, per the brief's "don't overload the main calling
+ * interface" instruction -- this card is the quick-glance surface, not
+ * the exhaustive one.
  */
-export const CustomerCard = ({ customer, indexLabel, isLeaving, activePhone, onSelectPhone }: Props) => {
+export const CustomerCard = ({ customer, indexLabel, isLeaving, activePhone, onSelectPhone, visibleFields = DEFAULT_VISIBLE_FIELDS }: Props) => {
   const [isEntering, setIsEntering] = useState(true);
 
   useEffect(() => {
@@ -110,10 +137,13 @@ export const CustomerCard = ({ customer, indexLabel, isLeaving, activePhone, onS
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <InfoCell icon="📅" label="DAYS OVERDUE" value={customer.daysLate} color="var(--accent-red)" />
-        <InfoCell icon="🪙" label="MONTHLY" value={customer.monthlyPayment} color="var(--text-primary)" />
-      </div>
+      {visibleFields.length > 0 && (
+        <div className={`grid gap-2 ${GRID_COLS_CLASS[visibleFields.length] ?? 'grid-cols-3'}`}>
+          {FIELD_DEFS.filter((field) => visibleFields.includes(field.id)).map((field) => (
+            <InfoCell key={field.id} icon={field.icon} label={field.label} value={field.value(customer)} color={field.color} />
+          ))}
+        </div>
+      )}
 
       {/* Both phone numbers, each independently tap-to-dial -- More
           Info now lives in the outcome-button row below the card

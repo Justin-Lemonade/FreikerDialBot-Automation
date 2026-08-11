@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoAdvance: true,
   primaryPhonePreference: 'first',
   preReadyCount: 0,
+  visibleFields: ['daysOverdue', 'monthlyPayment'],
 };
 
 export const useAppSettings = () => {

@@ -291,6 +291,7 @@ const App = () => {
           onAdvanceNextCustomer={advanceToNextCustomer}
           activePhone={activePhone}
           onSelectPhone={setSelectedPhone}
+          visibleFields={settings.visibleFields}
           upcomingPreview={upcomingPreview}
           onOpenDetail={() => {
             if (!currentCustomer) return;

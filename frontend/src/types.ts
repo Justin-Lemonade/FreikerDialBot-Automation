@@ -134,7 +134,14 @@ export interface AppSettings {
   autoAdvance: boolean;
   primaryPhonePreference: 'first' | 'second';
   preReadyCount: number;
+  visibleFields: VisibleField[];
 }
+
+/** The fixed, known set of CustomerCard financial fields Settings >
+ * Display > Visible Fields can control. Keep in sync with
+ * MiniAppService._VISIBLE_FIELD_IDS on the backend and with
+ * FIELD_DEFS in CustomerCard.tsx. */
+export type VisibleField = 'daysOverdue' | 'monthlyPayment' | 'balance';
 
 /** Telegram WebApp bridge -- only the subset of the real SDK this app
  * actually uses. See https://core.telegram.org/bots/webapps for the

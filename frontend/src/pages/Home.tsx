@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { CallButton } from '../components/CallButton';
 import { CustomerCard } from '../components/CustomerCard';
 import { OutcomeButtons } from '../components/OutcomeButtons';
-import type { Customer, SessionSummary } from '../types';
+import type { Customer, SessionSummary, VisibleField } from '../types';
 
 interface Props {
   session: SessionSummary | null;
@@ -25,6 +25,9 @@ interface Props {
    * read the same value. */
   activePhone?: string;
   onSelectPhone?: (phone: string) => void;
+  /** Settings > Display > Visible Fields -- which financial fields
+   * CustomerCard's info grid shows. */
+  visibleFields?: VisibleField[];
   /** Settings > Queue > Pre-ready Count -- up to that many customers
    * after the current one, fetched via useUpcomingQueue. Empty when the
    * setting is "None" (0). Preview only: tapping nothing here changes
@@ -55,6 +58,7 @@ export const Home = ({
   onAdvanceNextCustomer,
   activePhone,
   onSelectPhone,
+  visibleFields,
   upcomingPreview,
 }: Props) => {
   const [isLeaving, setIsLeaving] = useState(false);
@@ -91,6 +95,7 @@ export const Home = ({
         indexLabel={session ? `${session.currentCustomerIndex}/${session.customerCount}` : undefined}
         activePhone={activePhone}
         onSelectPhone={onSelectPhone}
+        visibleFields={visibleFields}
       />
 
       {hasPendingAdvance ? (
