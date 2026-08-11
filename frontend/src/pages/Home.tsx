@@ -19,6 +19,17 @@ interface Props {
    * customer until onAdvanceNextCustomer is tapped. */
   hasPendingAdvance?: boolean;
   onAdvanceNextCustomer?: () => void;
+  /** Settings > Phone Handling > Quick Number Switching -- which number
+   * CALL CUSTOMER will dial next, and the callback to change it. Lifted
+   * up to App.tsx since onStartCall (also owned by App.tsx) needs to
+   * read the same value. */
+  activePhone?: string;
+  onSelectPhone?: (phone: string) => void;
+  /** Settings > Queue > Pre-ready Count -- up to that many customers
+   * after the current one, fetched via useUpcomingQueue. Empty when the
+   * setting is "None" (0). Preview only: tapping nothing here changes
+   * queue state, it's just "who's coming up". */
+  upcomingPreview?: Customer[];
 }
 
 const CARD_EXIT_ANIMATION_MS = 380;
@@ -42,6 +53,9 @@ export const Home = ({
   onOpenDetail,
   hasPendingAdvance,
   onAdvanceNextCustomer,
+  activePhone,
+  onSelectPhone,
+  upcomingPreview,
 }: Props) => {
   const [isLeaving, setIsLeaving] = useState(false);
   const hasQueue = Boolean(session?.customerCount);
@@ -75,6 +89,8 @@ export const Home = ({
         customer={customer}
         isLeaving={isLeaving}
         indexLabel={session ? `${session.currentCustomerIndex}/${session.customerCount}` : undefined}
+        activePhone={activePhone}
+        onSelectPhone={onSelectPhone}
       />
 
       {hasPendingAdvance ? (
@@ -91,7 +107,7 @@ export const Home = ({
         </button>
       ) : (
         <>
-          <CallButton label="📞 CALL CUSTOMER" onClick={onStartCall} disabled={!customer?.phone} />
+          <CallButton label="📞 CALL CUSTOMER" onClick={onStartCall} disabled={!activePhone} />
 
           <OutcomeButtons
             onOutcome={handleOutcomeClick}
@@ -115,6 +131,31 @@ export const Home = ({
               {outcome ? 'Call finished' : durationLabel}
             </div>
           </div>
+
+          {upcomingPreview && upcomingPreview.length > 0 && (
+            // Settings > Queue > Pre-ready Count made real: a glance at
+            // who's coming up, not another way to jump the queue --
+            // there's no tap handler here on purpose.
+            <div>
+              <p className="mb-1.5 font-display text-[8px]" style={{ color: 'var(--text-muted)' }}>
+                ⏭ UP NEXT
+              </p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {upcomingPreview.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="min-w-[120px] shrink-0 px-3 py-2 font-data text-sm"
+                    style={{ border: '1px solid var(--border-frame)', color: 'var(--text-muted)' }}
+                  >
+                    <p className="truncate" style={{ color: 'var(--text-primary)' }}>
+                      {entry.name || '(name missing)'}
+                    </p>
+                    <p className="truncate text-xs">{entry.loanNumber}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

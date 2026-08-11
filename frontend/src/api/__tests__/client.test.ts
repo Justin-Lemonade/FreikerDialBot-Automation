@@ -109,6 +109,14 @@ describe('api client request construction', () => {
     expect(url).not.toContain(' ');
   });
 
+  it('getUpcomingQueue requests /queue/upcoming with the count query param', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { upcoming: [] }));
+    await api.getUpcomingQueue(3);
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/queue/upcoming?count=3');
+    expect(options.method ?? 'GET').toBe('GET');
+  });
+
   it('parses JSON responses into typed objects', async () => {
     const payload = { customerCount: 5, completed: false };
     fetchMock.mockResolvedValueOnce(jsonResponse(200, payload));

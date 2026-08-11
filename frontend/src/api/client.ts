@@ -155,6 +155,13 @@ export const api = {
 
   getUpcoming: () => get<import('../types').Customer>('/queue/upcoming'),
 
+  /** GET /queue/upcoming?count=N -- the real backend support behind
+   * Settings > Queue > Pre-ready Count. Kept as a separate method from
+   * getUpcoming (rather than an optional param on it) because the two
+   * return different shapes: a single customer vs a list. */
+  getUpcomingQueue: (count: number) =>
+    get<{ upcoming: import('../types').Customer[] }>(`/queue/upcoming?count=${count}`),
+
   searchCustomers: (query: string) =>
     get<{ results: import('../types').Customer[] }>(`/customer/search?q=${encodeURIComponent(query)}`),
 

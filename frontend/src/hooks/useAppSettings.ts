@@ -5,16 +5,24 @@ import type { AppSettings } from '../types';
 /**
  * The only Settings state that is real: backed by GET/POST /settings on
  * the Mini App API, which itself is enforced by QueueEngine
- * (maxCallAttempts) or read by App.tsx to gate the post-outcome
- * transition (autoAdvance). Everything else on the Settings screen
- * stays a disabled placeholder -- see Settings.tsx.
+ * (maxCallAttempts), read by App.tsx to gate the post-outcome
+ * transition (autoAdvance), used by MiniAppService._customer_payload to
+ * pick which stored number to auto-display/dial (primaryPhonePreference),
+ * or used by App.tsx to decide how many upcoming customers to prefetch
+ * (preReadyCount). Everything else on the Settings screen stays a
+ * disabled placeholder -- see Settings.tsx.
  *
  * Falls back to the same defaults the backend itself falls back to
  * (unlimited attempts, auto-advance on) so the UI never flashes a
  * different value than what actually governs behavior before the first
  * fetch resolves.
  */
-const DEFAULT_SETTINGS: AppSettings = { maxCallAttempts: null, autoAdvance: true };
+const DEFAULT_SETTINGS: AppSettings = {
+  maxCallAttempts: null,
+  autoAdvance: true,
+  primaryPhonePreference: 'first',
+  preReadyCount: 0,
+};
 
 export const useAppSettings = () => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);

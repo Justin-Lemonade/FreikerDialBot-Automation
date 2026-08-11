@@ -122,6 +122,98 @@ const AutoAdvanceRow = () => {
   );
 };
 
+/**
+ * Which stored phone number the Call button (and any other
+ * auto-display of "the" phone number) tries first. Real and
+ * backend-enforced -- see MiniAppService._ordered_phone_numbers.
+ * "Second on File" falls back to the first number automatically if a
+ * customer only has one, or if the second is blacklisted; nothing here
+ * needs to special-case that on the frontend.
+ */
+const PrimaryPhoneRow = () => {
+  const { settings, updateSettings, isSaving } = useAppSettings();
+  const options: { label: string; value: 'first' | 'second' }[] = [
+    { label: 'First on File', value: 'first' },
+    { label: 'Second on File', value: 'second' },
+  ];
+  return (
+    <div className="border-b py-3" style={{ borderColor: 'var(--border-frame)' }}>
+      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
+        Primary Phone Preference
+      </p>
+      <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
+        Which number the Call button dials first
+      </p>
+      <div className="grid grid-cols-2 gap-1.5">
+        {options.map((option) => {
+          const isActive = settings.primaryPhonePreference === option.value;
+          return (
+            <button
+              key={option.value}
+              onClick={() => updateSettings({ primaryPhonePreference: option.value })}
+              disabled={isSaving}
+              className="retro-button flex min-h-[44px] items-center justify-center px-2 text-center font-display text-[10px] disabled:opacity-50"
+              style={{
+                background: isActive ? 'var(--accent-green)' : 'var(--bg-panel)',
+                color: isActive ? 'var(--accent-green-text)' : 'var(--text-muted)',
+                border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const PRE_READY_OPTIONS: { label: string; value: number }[] = [
+  { label: 'None', value: 0 },
+  { label: '1', value: 1 },
+  { label: '2', value: 2 },
+  { label: '3', value: 3 },
+];
+
+/**
+ * How many upcoming customers App.tsx eagerly previews via
+ * GET /queue/upcoming?count=N ahead of the active one. Real and
+ * backend-enforced -- see MiniAppService.queue_upcoming's count param.
+ */
+const PreReadyCountRow = () => {
+  const { settings, updateSettings, isSaving } = useAppSettings();
+  return (
+    <div className="border-b py-3" style={{ borderColor: 'var(--border-frame)' }}>
+      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
+        Pre-ready Count
+      </p>
+      <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
+        How many customers stay pre-fetched
+      </p>
+      <div className="grid grid-cols-4 gap-1.5">
+        {PRE_READY_OPTIONS.map((option) => {
+          const isActive = settings.preReadyCount === option.value;
+          return (
+            <button
+              key={option.value}
+              onClick={() => updateSettings({ preReadyCount: option.value })}
+              disabled={isSaving}
+              className="retro-button flex min-h-[44px] items-center justify-center font-display text-xs disabled:opacity-50"
+              style={{
+                background: isActive ? 'var(--accent-green)' : 'var(--bg-panel)',
+                color: isActive ? 'var(--accent-green-text)' : 'var(--text-muted)',
+                border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 /** Real: reflects the actual last successful GET /session/current
  * (useSession's lastSyncedAt) and whether the app is currently showing
  * stale data (isStale) -- not a decorative "connected" dot. */
@@ -189,8 +281,8 @@ export const Settings = ({ isStale, lastSyncedAt }: Props) => {
 
       <Section title="PHONE HANDLING">
         <SettingRow label="Show Both Numbers" description="Always on -- see the call card" value="ON" />
-        <SettingRow label="Primary Phone Preference" description="Which number the Call button dials first" value="-" disabled />
-        <SettingRow label="Quick Number Switching" description="Swap primary number without More Info" value="-" disabled />
+        <PrimaryPhoneRow />
+        <SettingRow label="Quick Number Switching" description="Tap a number on the call card to make it active" value="ON" />
         <SettingRow label="Tap-to-Dial" description="Always on for every number on file" value="ON" />
       </Section>
 
@@ -203,7 +295,7 @@ export const Settings = ({ isStale, lastSyncedAt }: Props) => {
       </Section>
 
       <Section title="QUEUE">
-        <SettingRow label="Pre-ready Count" description="How many customers stay pre-fetched" value="-" disabled />
+        <PreReadyCountRow />
         <SettingRow label="Active Queue vs New Contacts" description="Ordering between the two" value="-" disabled />
         <SettingRow label="Resume / Restart Behavior" description="What happens on reopen" value="-" disabled />
       </Section>

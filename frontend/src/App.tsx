@@ -13,6 +13,7 @@ import { useCustomer } from './hooks/useCustomer';
 import { useTelegram } from './hooks/useTelegram';
 import { useCallTimer } from './hooks/useCallTimer';
 import { useAppSettings } from './hooks/useAppSettings';
+import { useUpcomingQueue } from './hooks/useUpcomingQueue';
 import { api, ApiError } from './api/client';
 import type { Customer, Screen } from './types';
 
@@ -35,6 +36,13 @@ const App = () => {
   const [detailReturnScreen, setDetailReturnScreen] = useState<Screen>('search');
   const [pendingSearchQuery, setPendingSearchQuery] = useState<string | null>(null);
   const [pendingAdvance, setPendingAdvance] = useState<PendingAdvance | null>(null);
+  // Settings > Phone Handling > Quick Number Switching: which number
+  // CALL CUSTOMER dials next. Reset to the backend's own preferred
+  // number (customer.phone, already Primary-Phone-Preference-ordered)
+  // whenever the current customer actually changes below -- this state
+  // only ever *overrides* that default for the customer it was picked
+  // on, it never persists across customers.
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
 
   const { session, loadState, error: sessionError, isStale, lastSyncedAt, refreshSession, applySession } = useSession();
   const { customer, setFromSession } = useCustomer();
@@ -80,9 +88,22 @@ const App = () => {
   }, [session?.completed, screen]);
 
   const currentCustomer = useMemo(() => customer ?? session?.currentCustomer ?? null, [customer, session]);
+  const upcomingPreview = useUpcomingQueue(currentCustomer?.id, settings.preReadyCount);
+
+  // A manually-selected phone only applies to the customer it was
+  // picked for -- clear it the moment the active customer actually
+  // changes, so a leftover selection from the previous customer can
+  // never silently carry over and dial the wrong person.
+  useEffect(() => {
+    setSelectedPhone(null);
+  }, [currentCustomer?.id]);
+
+  const activePhone = (currentCustomer?.phones.some((entry) => entry.number === selectedPhone)
+    ? selectedPhone
+    : null) ?? currentCustomer?.phone ?? undefined;
 
   const onStartCall = useCallback(() => {
-    if (!currentCustomer?.phone) return;
+    if (!currentCustomer || !activePhone) return;
     timer.reset();
     setActionError(null);
     telegram.haptic('medium');
@@ -94,13 +115,13 @@ const App = () => {
     // used to await api.startCall() first, which pushed the
     // navigation past that boundary and could make the button appear
     // to do nothing.
-    window.location.href = `tel:${currentCustomer.phone}`;
+    window.location.href = `tel:${activePhone}`;
     // Bookkeeping happens after, fire-and-forget: a failure here must
     // never block or delay the actual phone call.
     api.startCall(currentCustomer.id).catch((err) => {
       setActionError(err instanceof ApiError ? err.message : 'Could not record call start.');
     });
-  }, [currentCustomer, timer, telegram]);
+  }, [currentCustomer, activePhone, timer, telegram]);
 
   const handleOutcome = useCallback(
     async (nextOutcome: string) => {
@@ -268,6 +289,9 @@ const App = () => {
           onOpenNotes={() => setShowNotes(true)}
           hasPendingAdvance={Boolean(pendingAdvance)}
           onAdvanceNextCustomer={advanceToNextCustomer}
+          activePhone={activePhone}
+          onSelectPhone={setSelectedPhone}
+          upcomingPreview={upcomingPreview}
           onOpenDetail={() => {
             if (!currentCustomer) return;
             setSelectedCustomerId(currentCustomer.id);

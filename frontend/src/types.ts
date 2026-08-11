@@ -132,6 +132,8 @@ export interface ImportResult {
 export interface AppSettings {
   maxCallAttempts: number | null;
   autoAdvance: boolean;
+  primaryPhonePreference: 'first' | 'second';
+  preReadyCount: number;
 }
 
 /** Telegram WebApp bridge -- only the subset of the real SDK this app

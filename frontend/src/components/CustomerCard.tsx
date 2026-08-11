@@ -10,6 +10,16 @@ interface Props {
    * component a `key={customer.id}` at the call site so a genuinely new
    * customer actually remounts it. */
   isLeaving?: boolean;
+  /** Which phone number the CALL CUSTOMER button will dial next --
+   * Settings > Phone Handling > Quick Number Switching. Highlights that
+   * number in the list below so the operator can see at a glance which
+   * one is active without opening More Info. */
+  activePhone?: string;
+  /** Tapping a number always still dials it immediately (the existing
+   * href="tel:" below is unchanged) -- this additionally marks that
+   * number active for next time, so the operator doesn't have to
+   * re-pick it on every call to the same customer. */
+  onSelectPhone?: (phone: string) => void;
 }
 
 interface InfoCellProps {
@@ -39,14 +49,14 @@ const InfoCell = ({ icon, label, value, color }: InfoCellProps) => (
 /**
  * The ID-card / terminal-access-card signature element -- matches the
  * calling-screen inspiration images precisely: avatar + name/loan
- * number header, then a 3-column icon grid (days overdue / monthly
- * payment / phone), not a vertical list of every field. Balance and
- * anything beyond these three lives in the More Info / CustomerDetail
- * screen instead, per the brief's "don't overload the main calling
- * interface" instruction -- this card is the quick-glance surface, not
- * the exhaustive one.
+ * number header, then a 2-column icon grid (days overdue / monthly
+ * payment), then the phone-number list below. Balance and anything
+ * beyond these lives in the More Info / CustomerDetail screen instead,
+ * per the brief's "don't overload the main calling interface"
+ * instruction -- this card is the quick-glance surface, not the
+ * exhaustive one.
  */
-export const CustomerCard = ({ customer, indexLabel, isLeaving }: Props) => {
+export const CustomerCard = ({ customer, indexLabel, isLeaving, activePhone, onSelectPhone }: Props) => {
   const [isEntering, setIsEntering] = useState(true);
 
   useEffect(() => {
@@ -120,21 +130,27 @@ export const CustomerCard = ({ customer, indexLabel, isLeaving }: Props) => {
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {customer.phones.map((entry) => (
-              <a
-                key={entry.number}
-                href={`tel:${entry.number}`}
-                className="retro-button min-h-[36px] px-3 py-1.5 font-data text-base"
-                style={{
-                  border: `1px solid ${entry.isBlacklisted ? 'var(--accent-red)' : 'var(--border-frame)'}`,
-                  color: entry.isBlacklisted ? 'var(--accent-red)' : 'var(--accent-green)',
-                  textDecoration: entry.isBlacklisted ? 'line-through' : 'none',
-                  opacity: entry.isBlacklisted ? 0.7 : 1,
-                }}
-              >
-                {entry.number}
-              </a>
-            ))}
+            {customer.phones.map((entry) => {
+              const isActive = !entry.isBlacklisted && entry.number === activePhone;
+              return (
+                <a
+                  key={entry.number}
+                  href={`tel:${entry.number}`}
+                  onClick={() => onSelectPhone?.(entry.number)}
+                  className="retro-button min-h-[36px] px-3 py-1.5 font-data text-base"
+                  style={{
+                    border: `1px solid ${entry.isBlacklisted ? 'var(--accent-red)' : isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
+                    color: entry.isBlacklisted ? 'var(--accent-red)' : isActive ? 'var(--accent-green-text)' : 'var(--accent-green)',
+                    background: isActive ? 'var(--accent-green)' : 'transparent',
+                    textDecoration: entry.isBlacklisted ? 'line-through' : 'none',
+                    opacity: entry.isBlacklisted ? 0.7 : 1,
+                  }}
+                >
+                  {isActive ? '● ' : ''}
+                  {entry.number}
+                </a>
+              );
+            })}
           </div>
         )}
       </div>
