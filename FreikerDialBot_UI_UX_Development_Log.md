@@ -13,7 +13,145 @@ From Pass 4 onward, update this file at the end of every pass.
 
 ---
 
-## UI Pass 4 (this pass)
+## UI Pass 6 — "Post–UI Pass 5" audit and completion (this pass)
+
+**Brief:** do not assume UI Pass 5's claims are still correct --
+independently re-verify the repository first, then work through a
+prioritized list: finish the Settings system (Queue behavior, Display,
+Language), re-audit Commands, re-check Home/Calling/CustomerCard/
+Progress/animation/mobile/Search, verify settings update live, and run
+an independent bug hunt before declaring anything done.
+
+### Self-review
+
+**Re-verified, not re-implemented (found correct on inspection):**
+1. Landing overflow fix (`flex-1`/`min-h-0` in `MainLayout.tsx`/
+   `Landing.tsx`) -- confirmed the fix is still in place and traced the
+   layout math by hand; no clipping/hidden-button/excessive-space
+   issues found on the other screens sharing `<main>`.
+2. Phone Handling -- traced `_ordered_phone_numbers` ->
+   `_customer_payload` -> `onStartCall`'s `activePhone` end-to-end.
+   Correct for two numbers, missing numbers, blacklisted primary,
+   switching back and forth (`selectedPhone` resets per customer via
+   `useEffect` keyed on `currentCustomer?.id`), and persistence
+   (`GET/POST /settings`). Found two genuinely untested edge cases
+   (single number + "second" preference; both numbers blacklisted +
+   "second" preference) and added regression tests for both -- both
+   behave correctly (single-number case is a no-op per the `len > 1`
+   guard; both-blacklisted case still surfaces a real on-file number,
+   matching the "first" preference's existing behavior for the same
+   case).
+3. Pre-ready Count -- re-read `queue_upcoming`'s `count` branch:
+   `exclude_ids` starts with the current customer and grows with each
+   returned candidate, so the active customer can never appear in its
+   own preview and the N results can never contain a duplicate.
+   `get_next_actionable_customer`'s `WHERE status IN ('waiting',
+   'needs_review')` correctly excludes completed/skipped customers.
+   The "UP NEXT" strip has no tap handler, so it can't be mistaken for
+   a second queue-manipulation surface. Confirmed via
+   `test_queue_upcoming_with_count_returns_a_list` /
+   `..._stops_when_queue_runs_out` /
+   `..._keeps_single_object_shape` (all pre-existing, all still pass).
+4. Commands -- every button in "SUGGESTED COMMANDS" and every typed
+   command in the parser maps to a real API call
+   (`api.pauseQueue`/`resumeQueue`/`exportData`) or a real navigation
+   callback; `help`'s output is generated from the same `COMMANDS`
+   table that backs execution, so the two can't drift apart. No dead
+   or placeholder commands found.
+5. Search -- keyboard-safe (`scrollIntoView` on focus),
+   `HighlightedText` highlights against the actual matched query
+   returned by the real `GET /customer/search`, long values wrap via
+   `break-words`, navigation to `CustomerDetail` and back both work.
+   No changes needed.
+6. Language -- already correctly done pre-pass: English shown as
+   `ACTIVE` (it genuinely is the only implemented language), Russian
+   and Tajik shown as honestly disabled placeholders with no fake
+   selector logic behind them. Matches this pass's own instruction not
+   to claim localization is complete when only a selector exists --
+   there isn't even a selector, which is the more honest state given
+   no translation content exists yet.
+
+**Newly implemented, real, backend-enforced:**
+- Settings > Display > Visible Fields -- `visibleFields` setting
+  (`daysOverdue`/`monthlyPayment`/`balance`), validated against a
+  fixed known field set and stored pre-ordered to that fixed order
+  regardless of client-sent order. `CustomerCard`'s info grid changed
+  from two hardcoded `InfoCell`s to a `FIELD_DEFS` array filtered by
+  the setting (plus a static `GRID_COLS_CLASS` map, since Tailwind
+  needs each `grid-cols-N` class literal in source, not built from a
+  template string) -- adding a future field means adding one entry to
+  `FIELD_DEFS`, not restructuring the component.
+
+**Newly implemented, honest documentation of existing behavior (not
+fake toggles):**
+- Settings > Queue > Active Queue vs New Contacts and Resume/Restart
+  Behavior. Investigated both before writing anything: the `customers`
+  table is the single source of queue truth (new imports get a later
+  `import_timestamp` and are ordered in via the same
+  `get_next_actionable_customer` `ORDER BY import_timestamp ASC, id
+  ASC` used for everyone else -- no second/separate queue exists in
+  the architecture to toggle into), and `SessionManager.current_session`
+  always derives the in-progress session live from the database (no
+  local/browser session state exists to lose, so "resume" isn't a
+  choice between two behaviors, it's the only thing that happens).
+  Per this pass's own instruction ("if the architecture does not
+  currently support the behavior, document the boundary instead of
+  faking it"), both rows were converted from disabled placeholders to
+  real, non-toggle descriptions of the verified behavior -- same
+  pattern as the pre-existing "Show Both Numbers: ON" row.
+
+**Independent bug hunt (section 19) -- one real bug found and fixed:**
+- Appearance's "Telegram Theme: ON -- Uses WebApp theme colors" claim
+  was false: `grep -rn "themeParams|setHeaderColor|setBackgroundColor"`
+  across the frontend returns zero hits. The app's retro-spacecraft
+  palette is a fixed, hardcoded CSS custom-property theme
+  (`index.css`), never derived from `window.Telegram.WebApp
+  .themeParams`. Rather than building real theme integration (which
+  would fight the deliberate spacecraft aesthetic this and prior
+  passes were explicitly told to preserve), the row was corrected to
+  describe the real, intentional behavior: `value="Custom"`,
+  description "Uses the app's own fixed retro palette, not Telegram's
+  theme."
+- No other dead buttons, fake settings, stale-until-reload state, or
+  API/frontend mismatches were found in this pass's bug hunt. This is
+  a spot-check, not an exhaustive line-by-line audit -- future passes
+  should keep looking, not treat this as a closed question.
+
+**Actually complete, verified:** all of the above --
+`pytest tests/ -q` 425 passed (up from a 419 baseline that already
+included an unrelated concurrent `telegram_formatting.py` refactor),
+`npx tsc -b --noEmit` clean, `npm run test` 38 passed (no new frontend
+test infrastructure added -- existing Vitest setup only, per this
+pass's instruction not to build a new test architecture), `npm run
+build` clean, `npx oxlint` 0 warnings/0 errors. Commits pushed and
+verified against `main` via `git ls-remote origin main` (GitHub's REST
+API was returning transient 503s through this session's network path;
+`git ls-remote` over the git smart protocol is an equally-authoritative
+independent check of what's actually on GitHub, not a weaker
+substitute).
+
+**Explicitly deferred, not done this pass:** Compact vs Expanded
+Cards, Progress Density, Notes Preview, Default Search Fields, Accent
+Color, and Animation Intensity remain disabled placeholders. Each
+requires a UX/product decision this pass's scope didn't call for
+making unilaterally -- section 5 of this pass's brief explicitly says
+"do not automatically implement all of them," and none of these came
+back from investigation the way Queue's two rows did (as "the
+architecture already has exactly one real answer, worth documenting
+honestly"). A full line-by-line visual/animation/mobile re-audit
+(sections 9-13 of this pass's brief) was spot-checked rather than
+exhaustively redone, since UI Pass 4/5 already covered that ground in
+detail and nothing encountered while working through the rest of this
+pass suggested regressions there.
+
+### Commits this pass
+- `b3150ea` Backend: Visible Fields setting + Phone Handling edge-case tests
+- `c0892fb` Frontend: Visible Fields wiring + honest Queue-setting descriptions
+- `e9d8ec7` Fix false "Telegram Theme: ON" claim (independent bug hunt)
+
+---
+
+## UI Pass 4
 
 **Brief:** deliver a noticeably better product against an explicit
 priority list, not just check off individual requirements. Included an
@@ -99,7 +237,7 @@ pass's Home-screen restructuring made the card the *only* thing on the
 
 ---
 
-## UI Pass 5 (this pass)
+## UI Pass 5
 
 **Brief:** the three highest-priority items UI Pass 4 left for next
 time, in order: (1) a real screen-by-screen responsive-layout audit,

@@ -257,7 +257,13 @@ The audit covered the canonical documentation, repository tree, frontend structu
 
 ### GAP-014 — Settings functionality
 
-The Settings page still contains deliberately disabled placeholders for several categories, including Display, Search, Language, Accent Color, Animation Intensity, and parts of Admin/Diagnostics, plus a few remaining Queue rows (Active Queue vs New Contacts, Resume/Restart Behavior). Phone Handling and Queue > Pre-ready Count became real, backend-enforced settings in UI Pass 5 -- see `FreikerDialBot_UI_UX_Development_Log.md`. These are not bugs merely because they are disabled. Implementing them requires UX/product decisions; keep major work with Claude.
+The Settings page still contains deliberately disabled placeholders for Compact vs Expanded Cards, Progress Density, Notes Preview, Default Search Fields, Accent Color, Animation Intensity, and parts of Admin/Diagnostics -- these are not bugs merely because they are disabled; implementing them requires UX/product decisions and should stay with Claude.
+
+Resolved across UI Pass 5 and this pass ("Post-UI Pass 5" audit, see `FreikerDialBot_UI_UX_Development_Log.md`):
+- Phone Handling (Primary Phone Preference, Quick Number Switching) and Queue > Pre-ready Count -- real, backend-enforced (UI Pass 5).
+- Display > Visible Fields -- real, backend-enforced `visibleFields` setting (`daysOverdue`/`monthlyPayment`/`balance`), drives CustomerCard's now config-driven info grid.
+- Queue > Active Queue vs New Contacts and Resume/Restart Behavior -- traced the architecture and found there is exactly one queue and one server-authoritative session by design (no second/separate mechanism exists to toggle between), so both rows were converted from disabled placeholders to honest, non-toggle descriptions of the real, verified behavior rather than fake two-option toggles.
+- Language -- already correctly implemented pre-pass: English shown as the real active language (it's the only implemented one), Russian/Tajik as honest disabled placeholders, no fake selector.
 
 ### GAP-015 — Pre-ready N-deep customers (RESOLVED)
 
@@ -300,6 +306,19 @@ The current API exposes `/queue/resume`, but architecture/API documentation does
 ### STATE-024 — Paid terminology needs a single documented contract
 
 The code/UI may use `Paid` while the actual product semantics remain unresolved. Keep the terminology mismatch visible, but do not allow a documentation fix to silently define what Paid is supposed to do.
+
+### STATE-025 — "Post-UI Pass 5" audit and completion pass (2026-08-11)
+
+Re-audited the previous pass's claims against live code rather than trusting the prior report, per this pass's brief. Findings:
+
+- Landing overflow fix, Phone Handling, and Pre-ready Count all verified correct by re-reading `MainLayout.tsx`/`Landing.tsx`, tracing `_ordered_phone_numbers` → `_customer_payload` → call behavior, and re-checking `queue_upcoming`'s dedup/ordering/blacklist-skip logic. Added regression tests for two previously-untested edge cases (single-number + "second" preference; both-numbers-blacklisted + "second" preference).
+- Implemented Settings > Display > Visible Fields as a real, backend-enforced setting; made `CustomerCard`'s info grid config-driven (`FIELD_DEFS` array) so it doesn't need rewriting for future fields.
+- Investigated Queue > Active Queue vs New Contacts and Resume/Restart Behavior: the architecture supports exactly one queue and one server-authoritative session, so both were converted from disabled placeholders to honest, non-toggle descriptions of the real behavior rather than invented fake toggles.
+- Independent bug hunt (section 19) found one real fake-settings bug: Appearance's "Telegram Theme: ON -- Uses WebApp theme colors" claim had no code behind it (zero references to `themeParams`/`setHeaderColor`/`setBackgroundColor`). Fixed by correcting the claim to describe the app's actual, intentional fixed retro palette rather than building unwanted real theme integration.
+- Commands, Search, and Language were re-audited and found already correct -- no changes needed.
+- Test evidence: backend `pytest tests/ -q` went from 419 (pre-pass baseline, after a concurrent `telegram_formatting.py` refactor landed) to 425 passed; frontend stayed at 38 passed (no new frontend test infrastructure added, per this pass's instruction not to expand test architecture); `tsc -b --noEmit`, `npm run build`, and `npx oxlint` all clean throughout.
+- Commits: `b3150ea` (backend: Visible Fields setting + Phone Handling edge-case tests), `c0892fb` (frontend: Visible Fields wiring + honest Queue-setting descriptions), `e9d8ec7` (Telegram Theme claim fix).
+- Deferred, not done this pass: Compact vs Expanded Cards, Progress Density, Notes Preview, Default Search Fields, Accent Color, Animation Intensity remain disabled placeholders -- each requires a UX/product decision this pass's scope didn't call for implementing (section 5 explicitly says "do not automatically implement all of them").
 
 ## Findings: security posture
 
