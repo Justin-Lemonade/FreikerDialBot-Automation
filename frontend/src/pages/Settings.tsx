@@ -268,6 +268,50 @@ const VisibleFieldsRow = () => {
   );
 };
 
+/**
+ * Whether transition/glow animations play at full motion or are
+ * reduced. Real and backend-enforced -- see App.tsx's data-motion
+ * effect and index.css's html[data-motion='reduced'] rule, which has
+ * the identical effect to the OS-level prefers-reduced-motion query.
+ */
+const AnimationIntensityRow = () => {
+  const { settings, updateSettings, isSaving } = useAppSettings();
+  const options: { label: string; value: 'full' | 'reduced' }[] = [
+    { label: 'Full', value: 'full' },
+    { label: 'Reduced', value: 'reduced' },
+  ];
+  return (
+    <div className="border-b py-3 last:border-b-0" style={{ borderColor: 'var(--border-frame)' }}>
+      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
+        Animation Intensity
+      </p>
+      <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
+        Motion for transitions/glow
+      </p>
+      <div className="grid grid-cols-2 gap-1.5">
+        {options.map((option) => {
+          const isActive = settings.animationIntensity === option.value;
+          return (
+            <button
+              key={option.value}
+              onClick={() => updateSettings({ animationIntensity: option.value })}
+              disabled={isSaving}
+              className="retro-button flex min-h-[44px] items-center justify-center font-display text-[10px] disabled:opacity-50"
+              style={{
+                background: isActive ? 'var(--accent-green)' : 'var(--bg-panel)',
+                color: isActive ? 'var(--accent-green-text)' : 'var(--text-muted)',
+                border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 /** Real: reflects the actual last successful GET /session/current
  * (useSession's lastSyncedAt) and whether the app is currently showing
  * stale data (isStale) -- not a decorative "connected" dot. */
@@ -391,7 +435,7 @@ export const Settings = ({ isStale, lastSyncedAt }: Props) => {
         <SettingRow label="Telegram Theme" description="Uses the app's own fixed retro palette, not Telegram's theme" value="Custom" />
         <SettingRow label="Haptics" description="Vibrations for key actions" value="ON" />
         <SettingRow label="Accent Color" description="Override the default green accent" value="-" disabled />
-        <SettingRow label="Animation Intensity" description="Motion for transitions/glow" value="-" disabled />
+        <AnimationIntensityRow />
       </Section>
 
       <Section title="LANGUAGE">

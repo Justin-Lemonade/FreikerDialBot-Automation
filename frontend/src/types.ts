@@ -135,6 +135,7 @@ export interface AppSettings {
   primaryPhonePreference: 'first' | 'second';
   preReadyCount: number;
   visibleFields: VisibleField[];
+  animationIntensity: 'full' | 'reduced';
 }
 
 /** The fixed, known set of CustomerCard financial fields Settings >

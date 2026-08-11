@@ -50,6 +50,15 @@ const App = () => {
   const timer = useCallTimer();
   const { settings } = useAppSettings();
 
+  // Applies Settings > Appearance > Animation Intensity by toggling a
+  // root-level data attribute that index.css's animation keyframes key
+  // off of -- one real setting controlling every transition/glow
+  // animation at once (card slide, progress-cell "charge" flash,
+  // nav-tab pop), not a fake per-animation toggle list.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-motion', settings.animationIntensity);
+  }, [settings.animationIntensity]);
+
   // Poll every 5s so the progress bar / current customer stay live even
   // if the operator leaves the app idle on one screen -- the progress
   // display must always reflect real, current queue state, not a

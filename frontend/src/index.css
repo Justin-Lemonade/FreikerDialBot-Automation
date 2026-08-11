@@ -334,3 +334,22 @@ p {
     transition: none !important;
   }
 }
+
+/* Settings > Appearance > Animation Intensity -- an explicit in-app
+   toggle (App.tsx sets data-motion on <html>) with the exact same
+   effect as the OS-level prefers-reduced-motion query above, for
+   operators who want reduced motion in this app specifically without
+   changing a system-wide accessibility setting. Written as a flat
+   selector list (not nested CSS) since this build has no CSS-nesting
+   postcss plugin configured. */
+html[data-motion='reduced'] .progress-cell.is-charging,
+html[data-motion='reduced'] .progress-count.is-pulsing,
+html[data-motion='reduced'] .card-jump-out,
+html[data-motion='reduced'] .card-jump-in,
+html[data-motion='reduced'] .drawer-panel,
+html[data-motion='reduced'] .drawer-backdrop,
+html[data-motion='reduced'] .nav-tab.is-active .nav-tab-icon,
+html[data-motion='reduced'] .retro-button {
+  animation: none !important;
+  transition: none !important;
+}

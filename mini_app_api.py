@@ -313,6 +313,7 @@ class MiniAppService:
                 "primary_phone_preference",
                 "pre_ready_count",
                 "visible_fields",
+                "animation_intensity",
             ]
         )
         max_attempts_raw = raw.get("max_call_attempts")
@@ -346,6 +347,13 @@ class MiniAppService:
             # payment, balance excluded -- Pass 4 deliberately moved
             # balance to More Info to keep the calling card compact).
             "visibleFields": visible_fields,
+            # Whether transition/glow animations (card slide, progress
+            # segment "charge" flash, nav-tab pop) play at full motion
+            # or are reduced -- real, read by the frontend root
+            # (App.tsx applies a data attribute index.css keys off of).
+            # Defaults to "full": today's existing behavior for anyone
+            # who has never touched the setting.
+            "animationIntensity": raw.get("animation_intensity") or "full",
         }
 
     def update_settings(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -390,6 +398,11 @@ class MiniAppService:
             # construction rather than by convention.
             ordered = [field for field in self._VISIBLE_FIELD_IDS if field in value]
             self.database.set_setting("visible_fields", ",".join(ordered))
+        if "animationIntensity" in fields:
+            intensity = fields["animationIntensity"]
+            if intensity not in ("full", "reduced"):
+                return {"ok": False, "error": "animationIntensity must be 'full' or 'reduced'"}
+            self.database.set_setting("animation_intensity", intensity)
         return {"ok": True, "settings": self.get_settings()}
 
     def pause_queue(self, telegram_user_id: int | None = None) -> dict[str, Any]:

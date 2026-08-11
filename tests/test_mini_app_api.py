@@ -237,6 +237,7 @@ def test_settings_endpoint_defaults_to_unlimited_and_auto_advance_on(api_server)
         "primaryPhonePreference": "first",
         "preReadyCount": 0,
         "visibleFields": ["daysOverdue", "monthlyPayment"],
+        "animationIntensity": "full",
     }
 
 
@@ -254,6 +255,7 @@ def test_settings_endpoint_persists_max_call_attempts(api_server):
             "primaryPhonePreference": "first",
             "preReadyCount": 0,
             "visibleFields": ["daysOverdue", "monthlyPayment"],
+            "animationIntensity": "full",
         },
     }
 
@@ -261,6 +263,34 @@ def test_settings_endpoint_persists_max_call_attempts(api_server):
     status, settings = _request_json(server, "/settings", service=service)
     assert status == 200
     assert settings["maxCallAttempts"] == 2
+
+
+class TestAnimationIntensitySetting:
+    def test_defaults_to_full(self, api_server):
+        server, service = api_server
+        status, settings = _request_json(server, "/settings", service=service)
+        assert status == 200
+        assert settings["animationIntensity"] == "full"
+
+    def test_persists_reduced(self, api_server):
+        server, service = api_server
+        status, result = _request_json(
+            server, "/settings", method="POST", payload={"animationIntensity": "reduced"}, service=service
+        )
+        assert status == 200
+        assert result["settings"]["animationIntensity"] == "reduced"
+
+        status, settings = _request_json(server, "/settings", service=service)
+        assert status == 200
+        assert settings["animationIntensity"] == "reduced"
+
+    def test_rejects_invalid_value(self, api_server):
+        server, service = api_server
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            _request_json(
+                server, "/settings", method="POST", payload={"animationIntensity": "extreme"}, service=service
+            )
+        assert exc_info.value.code == 400
 
 
 def test_settings_endpoint_rejects_invalid_max_call_attempts(api_server):

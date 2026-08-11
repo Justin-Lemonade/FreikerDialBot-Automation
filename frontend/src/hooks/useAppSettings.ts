@@ -23,6 +23,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   primaryPhonePreference: 'first',
   preReadyCount: 0,
   visibleFields: ['daysOverdue', 'monthlyPayment'],
+  animationIntensity: 'full',
 };
 
 export const useAppSettings = () => {
