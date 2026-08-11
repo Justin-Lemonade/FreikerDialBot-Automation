@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from database import Database
-from formatting import format_duration_coarse, format_duration_fine
 from statistics_engine import StatisticsEngine
 
 
@@ -199,36 +198,17 @@ class SessionManager:
         )
 
     def render_current_session(self) -> str:
+        from telegram_formatting import render_current_session as _tf_render
+
         session = self.current_session()
         if not session:
             return "No active session."
-
-        counts = self.database.status_counts()
-        started = session["started_at"] or "Not started"
-        elapsed = self._elapsed_text(session["started_at"])
-        return (
-            f"Session Name\n{session['session_name']}\n\n"
-            f"Started\n{started}\n\n"
-            f"Elapsed Time\n{elapsed}\n\n"
-            f"Imported\n{session['total_customers']}\n\n"
-            f"Remaining\n{counts['waiting']}\n\n"
-            f"Contacted\n{counts['warned']}\n\n"
-            f"Didn't Answer\n{counts['call_later']}\n\n"
-            f"Status\n{session['status']}"
-        )
+        return _tf_render(session, self.database.status_counts())
 
     def render_completion_summary(self, summary: SessionSummary | None) -> str:
-        if summary is None:
-            return "Session Complete"
-        return (
-            "Session Complete\n"
-            "--------------\n"
-            f"Imported\n{summary.imported}\n\n"
-            f"Contacted\n{summary.contacted}\n\n"
-            f"Didn't Answer\n{summary.did_not_answer}\n\n"
-            f"Duration\n{format_duration_coarse(summary.duration_seconds)}\n\n"
-            f"Average Time Per Customer\n{format_duration_fine(summary.average_seconds_per_customer)}"
-        )
+        from telegram_formatting import render_completion_summary as _tf_render
+
+        return _tf_render(summary)
 
     def most_recent_session(self) -> dict | None:
         """Return the most recent session regardless of status.
@@ -270,9 +250,3 @@ class SessionManager:
             return None
         return datetime.fromisoformat(value)
 
-    def _elapsed_text(self, started_at: str | None) -> str:
-        start = self._parse_time(started_at)
-        if not start:
-            return "0 minutes"
-        seconds = max(0, int((datetime.now(timezone.utc) - start).total_seconds()))
-        return format_duration_coarse(seconds)

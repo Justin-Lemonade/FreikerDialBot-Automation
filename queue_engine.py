@@ -387,27 +387,17 @@ class QueueEngine:
 
     def completion_summary(self) -> str:
         counts = self.database.status_counts()
-        contacted = self.database.customers_by_status("warned")
-        did_not_answer = self.database.customers_by_status("call_later")
+        contacted = [
+            f"{c['first_name']} {c['last_name']}"
+            for c in self.database.customers_by_status("warned")
+        ]
+        did_not_answer = [
+            f"{c['first_name']} {c['last_name']}"
+            for c in self.database.customers_by_status("call_later")
+        ]
+        from telegram_formatting import render_completion_details
 
-        def names(customers: list[dict[str, Any]]) -> str:
-            if not customers:
-                return "None"
-            return "\n".join(
-                f"{customer['first_name']} {customer['last_name']}"
-                for customer in customers
-            )
-
-        return (
-            "Session Complete\n\n"
-            f"Number Contacted: {counts['warned']}\n"
-            f"Number Didn't Answer: {counts['call_later']}\n"
-            f"Number Remaining: {counts['waiting']}\n\n"
-            "Contacted\n"
-            f"{names(contacted)}\n\n"
-            "Didn't Answer\n"
-            f"{names(did_not_answer)}"
-        )
+        return render_completion_details(counts, contacted, did_not_answer)
 
     def session_completion_summary(self, telegram_user_id: int | None = None) -> str | None:
         if not self.session_manager:

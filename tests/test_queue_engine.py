@@ -212,8 +212,8 @@ def test_queue_completion_and_summary(database):
 
     assert complete.complete
     assert "Session Complete" in summary
-    assert "Number Contacted: 2" in summary
-    assert "Number Didn't Answer: 1" in summary
+    assert "• <b>Contacted:</b> 2" in summary
+    assert "• <b>Didn't answer:</b> 1" in summary
     assert "Ada Lovelace" in summary
     assert "Grace Hopper" in summary
 
@@ -224,10 +224,10 @@ def test_expanded_information_contains_required_fields(database):
 
     text = render_customer(selection.customer, selection.progress)
 
-    assert "Loan #: Q-1" in text
-    assert "Balance: 100" in text
-    assert "Days Overdue: 3" in text
-    assert 'Phone: <a href="tel:111">111</a>' in text
+    assert "<code>Q-1</code>" in text
+    assert "• <b>Balance:</b> <b>100</b>" in text
+    assert "• <b>Days overdue:</b> 3" in text
+    assert 'Phone:</b> <a href="tel:111">111</a>' in text
 
 
 def test_progress_calculation(database):

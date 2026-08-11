@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from html import escape
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
-from formatting import format_currency
 from logger import log
 from queue_engine import QueueEngine, QueueSelection
 
@@ -132,53 +129,18 @@ def _send_text_with_retry(message, text: str, reply_markup: InlineKeyboardMarkup
     return _send
 
 
-def _phone_text_line(phones: list[str]) -> str:
-    """Phone numbers as tel: hyperlinks in the message TEXT -- a documented
-    safe fallback reference alongside the primary Call button(s)."""
-    if not phones:
-        return "No phone on file"
-    links = [f'<a href="tel:{escape(phone)}">{escape(phone)}</a>' for phone in phones]
-    return ", ".join(links)
-
-
 def render_customer(customer: dict, progress) -> str:
-    full_name = f"{customer['first_name']} {customer['last_name']}".strip() or "(name missing)"
-    phones = customer.get("phone_numbers") or []
+    """Thin wrapper kept for stable call sites; formatting lives in
+    telegram_formatting.render_customer_card."""
+    from telegram_formatting import render_customer_card
 
-    header = f"Client {progress.current_position}/{progress.total_customers}     {progress.percent}%"
-
-    body = [
-        header,
-        "",
-        f"👤 {escape(full_name)}",
-        "",
-        f"Loan #: {escape(customer['loan_number'])}",
-        f"Balance: {escape(format_currency(customer.get('balance')))}",
-        f"Days Overdue: {escape(customer['days_overdue'])}",
-    ]
-
-    if customer.get("monthly_payment"):
-        body.append(f"Monthly Payment: {escape(format_currency(customer['monthly_payment']))}")
-    if customer.get("current_overdue_amount"):
-        body.append(f"Amount Overdue: {escape(format_currency(customer['current_overdue_amount']))}")
-
-    body.append(f"Phone: {_phone_text_line(phones)}")
-
-    if customer.get("warning_note"):
-        body.append("")
-        body.append(f"⚠️ {escape(customer['warning_note'])}")
-
-    body.extend(["", "Choose an action. Tap ℹ️ More Info for full loan details and history."])
-    return "\n".join(body)
+    return render_customer_card(customer, progress)
 
 
 def render_status(progress) -> str:
-    return (
-        f"Customers Remaining: {progress.remaining}\n"
-        f"Customers Contacted: {progress.contacted}\n"
-        f"Customers Didn't Answer: {progress.did_not_answer}\n"
-        f"Progress {progress.percent}%"
-    )
+    from telegram_formatting import render_queue_status
+
+    return render_queue_status(progress)
 
 
 def _completion_text(queue: QueueEngine, telegram_user_id: int | None) -> str:
@@ -228,6 +190,8 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text(
             _completion_text(queue, telegram_user_id),
             reply_markup=completion_keyboard(selection.progress.did_not_answer > 0),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
         )
         return
 
@@ -245,7 +209,9 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     queue = queue_from_context(context)
-    await update.effective_message.reply_text(render_status(queue.status()))
+    await update.effective_message.reply_text(
+        render_status(queue.status()), parse_mode="HTML", disable_web_page_preview=True
+    )
 
 
 async def handle_queue_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -265,6 +231,8 @@ async def handle_queue_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 await query.edit_message_text(
                     "No customers to call back.\n\n" + _completion_text(queue, telegram_user_id),
                     reply_markup=completion_keyboard(False),
+                    parse_mode="HTML",
+                    disable_web_page_preview=True,
                 )
             elif selection.customer:
                 await query.edit_message_text(
@@ -329,6 +297,8 @@ async def handle_queue_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text(
                 _completion_text(queue, telegram_user_id),
                 reply_markup=completion_keyboard(selection.progress.did_not_answer > 0),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
             )
         elif selection.customer:
             await query.edit_message_text(

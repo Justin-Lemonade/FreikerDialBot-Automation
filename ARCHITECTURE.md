@@ -39,6 +39,7 @@ Telegram client
 
 - `bot.py` is the Telegram entrypoint.
 - `telegram_ui.py`, `queue_ui.py`, `stats_ui.py`, `customer_ui.py`, and `admin_commands.py` render the Telegram experience and call the shared backend.
+- `telegram_formatting.py` is the centralized Telegram presentation layer: every user-facing message is built there (HTML, escaped) so formatting is not scattered through business logic. Business modules (e.g. `statistics_engine.render_statistics`) delegate their render methods to it.
 - Telegram-side admin actions use the shared security rules.
 
 ### Mini App

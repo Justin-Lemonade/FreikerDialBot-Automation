@@ -41,15 +41,6 @@ class StatisticsSnapshot:
     average_seconds_per_customer: int
 
 
-def _format_duration(seconds: int) -> str:
-    if seconds < 60:
-        return f"{seconds}s" if seconds else "0s"
-    minutes, secs = divmod(seconds, 60)
-    if secs:
-        return f"{minutes}m {secs}s"
-    return f"{minutes}m"
-
-
 class StatisticsEngine:
     """Records immutable events and maintains running statistics."""
 
@@ -241,27 +232,9 @@ class StatisticsEngine:
         )
 
     def render_statistics(self) -> str:
-        snapshot = self.snapshot()
-        today = snapshot.today
-        lifetime = snapshot.lifetime
-        return (
-            "Today's Statistics\n"
-            "--------------\n"
-            f"Customers Imported\n{today['customers_loaded']}\n\n"
-            f"Customers Contacted\n{today['customers_contacted']}\n\n"
-            f"Didn't Answer\n{today['customers_not_answered']}\n\n"
-            f"Completed Sessions\n{today['sessions_completed']}\n\n"
-            "Lifetime Statistics\n"
-            "--------------\n"
-            f"Customers Imported\n{lifetime['customers_loaded']}\n\n"
-            f"Customers Contacted\n{lifetime['customers_contacted']}\n\n"
-            f"Didn't Answer\n{lifetime['customers_not_answered']}\n\n"
-            f"Sessions\n{lifetime['sessions']}\n\n"
-            "Average Contacts Per Session\n"
-            f"{snapshot.average_contacts_per_session}\n\n"
-            "Average Time Per Customer (Lifetime)\n"
-            f"{_format_duration(snapshot.average_seconds_per_customer)}"
-        )
+        from telegram_formatting import render_statistics as _tf_render
+
+        return _tf_render(self.snapshot())
 
     def _empty_daily(self) -> dict[str, int]:
         return {

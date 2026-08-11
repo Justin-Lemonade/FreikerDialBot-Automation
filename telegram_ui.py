@@ -14,6 +14,7 @@ from customer_ui import handle_potential_edit_block
 from importer import ImporterError, ImportResult, Importer
 from logger import log
 from queue_ui import completion_keyboard, resume as queue_resume
+from telegram_formatting import render_help_text as _tf_render_help_text
 
 
 PROGRESS_STAGES = [
@@ -30,34 +31,9 @@ PROGRESS_STAGES = [
 # short window is enough to catch genuine continuations.
 FRAGMENT_MERGE_WINDOW_SECONDS = 5.0
 
-HELP_TEXT = (
-    "Available Commands\n"
-    "--------------\n"
-    "/start - Show status and quick actions\n"
-    "/app - Open the Mini App\n"
-    "/upload - Reminder of how to bring in customer data\n"
-    "/resume - Start or continue the calling queue\n"
-    "/pause - Pause the calling queue\n"
-    "/status - Show queue progress\n"
-    "/session - Show current session details\n"
-    "/rename <name> - Give the current session a custom name\n"
-    "/stats - Show today's and lifetime statistics\n"
-    "/customer <query> - Search for a customer by name, loan #, or phone\n"
-    "/edit <loan #> field=value ... - Edit a customer's fields\n"
-    "/blacklist <loan #> - Blacklist a customer\n"
-    "/unblacklist <loan #> - Remove a customer from the blacklist\n"
-    "/blacklist_phone <phone> [reason] - Blacklist a phone number\n"
-    "/unblacklist_phone <phone> - Remove a phone number from the blacklist\n"
-    "/help - Show this list\n\n"
-    "Bringing in customers: paste text, paste JSON, upload a .json file, "
-    "or upload a CRM screenshot -- all work without needing /upload first.\n\n"
-    "Administrative (authorized users only)\n"
-    "--------------\n"
-    "/summary - Full session summary, including completion details\n"
-    "/reset - Reset the queue and reuse the same import\n"
-    "/clear - Completely clear the current queue\n"
-    "/export [csv|json] - Export customer records as a file"
-)
+#: Command reference shown by /help and the "Help" button. Grouped and
+#: HTML-formatted by the centralized presentation layer.
+HELP_TEXT = _tf_render_help_text()
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +105,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.effective_message.reply_text(HELP_TEXT)
+    await update.effective_message.reply_text(
+        HELP_TEXT, parse_mode="HTML", disable_web_page_preview=True
+    )
 
 
 async def upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -199,15 +177,19 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "apply to files."
         )
     elif query.data == "view_help":
-        await query.message.reply_text(HELP_TEXT)
+        await query.message.reply_text(HELP_TEXT, parse_mode="HTML", disable_web_page_preview=True)
     elif query.data == "view_stats":
         statistics = context.application.bot_data["statistics_engine"]
-        await query.message.reply_text(statistics.render_statistics())
+        await query.message.reply_text(
+            statistics.render_statistics(), parse_mode="HTML", disable_web_page_preview=True
+        )
     elif query.data == "view_status":
         queue_engine = context.application.bot_data["queue_engine"]
         from queue_ui import render_status
 
-        await query.message.reply_text(render_status(queue_engine.status()))
+        await query.message.reply_text(
+            render_status(queue_engine.status()), parse_mode="HTML", disable_web_page_preview=True
+        )
     elif query.data == "start_calling":
         await queue_resume(update, context)
     elif query.data == "new_call_list":
@@ -253,40 +235,14 @@ async def _report_import_result(progress_message, result: ImportResult) -> None:
     """Report success only after a round-trip verification pass, and
     surface any anomalies instead of blindly saying everything is fine.
     """
-    lines = [
-        "Importer initialized successfully.",
-        "Import complete.",
-        f"{result.imported_count} customers imported.",
-    ]
+    from telegram_formatting import render_import_result
 
-    if result.flagged_count:
-        lines.append(
-            f"\u26a0\ufe0f {result.flagged_count} record(s) flagged for review "
-            "(missing name or phone). They appear in the queue — Skip or Delete them there."
-        )
-
-    if result.errors:
-        lines.append("")
-        lines.append(f"\U0001f6ab {len(result.errors)} row(s) were dropped and NOT saved:")
-        for error in result.errors[:5]:
-            lines.append(f"- {error}")
-        if len(result.errors) > 5:
-            lines.append(f"...and {len(result.errors) - 5} more. Use /export to see all.")
-
-    if result.verification_warnings:
-        lines.append("")
-        lines.append(f"\u26a0\ufe0f {len(result.verification_warnings)} record(s) need a second look:")
-        for warning in result.verification_warnings[:5]:
-            lines.append(f"- {warning}")
-        if len(result.verification_warnings) > 5:
-            lines.append(f"...and {len(result.verification_warnings) - 5} more.")
-        lines.append("Use /export to review, or /clear and re-import if needed.")
-
-    lines.append("")
-    lines.append("Tip: use /rename <name> to give this session a custom name.")
-    lines.append("Ready when you are.")
-
-    await progress_message.edit_text("\n".join(lines), reply_markup=ready_to_call_keyboard())
+    await progress_message.edit_text(
+        render_import_result(result),
+        reply_markup=ready_to_call_keyboard(),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
 
 
 async def _run_text_import(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:

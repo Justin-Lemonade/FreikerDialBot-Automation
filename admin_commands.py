@@ -160,7 +160,14 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ---------------------------------------------------------------------------
 
 def render_summary(database: Database, session: dict[str, Any]) -> str:
-    """Render the human-readable /summary text for the current session."""
+    """Render the human-readable /summary text for the current session.
+
+    Computes the summary values here, then delegates the actual HTML
+    presentation to telegram_formatting.render_summary so this module
+    stays free of formatting strings.
+    """
+    from telegram_formatting import render_summary as _tf_render_summary
+
     counts = database.status_counts()
     total = session["total_customers"] or sum(counts.values())
     handled = total - counts["waiting"]
@@ -190,29 +197,25 @@ def render_summary(database: Database, session: dict[str, Any]) -> str:
         round(basis_seconds / handled_count) if handled_count else 0
     )
 
-    lines = [
-        f"Session Name\n{session['session_name']}",
-        f"Started\n{started}",
-        f"Elapsed Time\n{elapsed}",
-        f"Imported\n{total}",
-        f"Remaining\n{counts['waiting']}",
-        f"Contacted\n{counts['warned']}",
-        f"Didn't Answer\n{counts['call_later']}",
-        f"Completion %\n{percent}%",
-        f"Average Time Per Customer\n{format_duration_fine(average_seconds_per_customer)}",
+    values = [
+        ("Session Name", session["session_name"]),
+        ("Started", started),
+        ("Elapsed Time", elapsed),
+        ("Imported", total),
+        ("Remaining", counts["waiting"]),
+        ("Contacted", counts["warned"]),
+        ("Didn't Answer", counts["call_later"]),
+        ("Completion %", f"{percent}%"),
+        ("Average Time Per Customer", format_duration_fine(average_seconds_per_customer)),
     ]
 
     if session["status"] == "completed":
         duration_seconds = int(session.get("duration_seconds") or 0)
-        lines.extend(
-            [
-                "Completed\nYes",
-                f"Completion Time\n{session.get('finished_at') or 'Unknown'}",
-                f"Duration\n{format_duration_coarse(duration_seconds)}",
-            ]
-        )
+        values.append(("Completed", "Yes"))
+        values.append(("Completion Time", session.get("finished_at") or "Unknown"))
+        values.append(("Duration", format_duration_coarse(duration_seconds)))
 
-    return "\n\n".join(lines)
+    return _tf_render_summary(values)
 
 
 async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -232,7 +235,11 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not session:
             await update.effective_message.reply_text("No active session.")
             return
-        await update.effective_message.reply_text(render_summary(database, session))
+        await update.effective_message.reply_text(
+            render_summary(database, session),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
         log.info("Summary Generated")
     except Exception:
         log.exception("Summary generation failed")

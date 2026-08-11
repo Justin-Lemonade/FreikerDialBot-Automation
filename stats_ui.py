@@ -19,9 +19,13 @@ def session_manager_from_context(context: ContextTypes.DEFAULT_TYPE) -> SessionM
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     statistics = statistics_from_context(context)
-    await update.effective_message.reply_text(statistics.render_statistics())
+    await update.effective_message.reply_text(
+        statistics.render_statistics(), parse_mode="HTML", disable_web_page_preview=True
+    )
 
 
 async def session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     manager = session_manager_from_context(context)
-    await update.effective_message.reply_text(manager.render_current_session())
+    await update.effective_message.reply_text(
+        manager.render_current_session(), parse_mode="HTML", disable_web_page_preview=True
+    )

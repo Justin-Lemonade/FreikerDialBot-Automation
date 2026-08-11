@@ -95,7 +95,7 @@ def test_session_completion_records_duration_and_daily_completed(tmp_path):
     lifetime = statistics.lifetime_statistics()
     assert complete.complete
     assert "Session Complete" in summary_text
-    assert "Imported\n2" in summary_text
+    assert "• <b>Imported:</b> 2" in summary_text
     assert lifetime["customers_contacted"] == 1
     assert lifetime["customers_not_answered"] == 1
     assert lifetime["sessions_completed"] == 1
@@ -127,9 +127,9 @@ def test_session_retrieval_and_rendering(tmp_path):
     rendered = sessions.render_current_session()
 
     assert session["session_name"] == "Evening Calls"
-    assert "Session Name\nEvening Calls" in rendered
-    assert "Imported\n2" in rendered
-    assert "Status\nrunning" in rendered
+    assert "Evening Calls" in rendered
+    assert "• <b>Imported:</b> 2" in rendered
+    assert "running" in rendered
 
 
 def test_statistics_after_multiple_sessions(tmp_path):
@@ -194,5 +194,5 @@ def test_statistics_plain_text_output(tmp_path):
     rendered = statistics.render_statistics()
 
     assert "Today's Statistics" in rendered
-    assert "Customers Imported\n4" in rendered
-    assert "Lifetime Statistics" in rendered
+    assert "• <b>Imported:</b> 4" in rendered
+    assert "<b>Lifetime</b>" in rendered

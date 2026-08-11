@@ -13,13 +13,10 @@ division of responsibility queue_ui.py already has with queue_engine.py.
 
 from __future__ import annotations
 
-from html import escape
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from database import Database
-from formatting import format_currency, format_date, format_loan_number
 from logger import log
 from queue_engine import QueueEngine
 from queue_ui import queue_keyboard, render_customer
@@ -221,55 +218,11 @@ def render_customer_record(record: dict) -> str:
     """Full customer detail view: identity, blacklist state, notes, and
     history -- everything the "understand what happened without digging
     through raw backend records" goal asks for, capped to a readable
-    length rather than dumping unbounded history."""
-    full_name = f"{record['first_name']} {record['last_name']}".strip() or "(name missing)"
-    phones = record.get("phone_numbers") or []
-    blacklisted_phones = set(record.get("blacklisted_phones") or [])
+    length rather than dumping unbounded history. Formatting lives in
+    telegram_formatting.render_customer_record."""
+    from telegram_formatting import render_customer_record as _tf_render_record
 
-    def phone_line(phone: str) -> str:
-        marked = f"{phone} 🚫" if phone in blacklisted_phones else phone
-        return f"{marked} (primary)" if phones and phone == phones[0] else marked
-
-    lines = [f"👤 {escape(full_name)}"]
-    if record.get("is_blacklisted"):
-        lines.append("🚫 CUSTOMER BLACKLISTED")
-    lines.extend(
-        [
-            f"Loan #: {escape(format_loan_number(record.get('loan_number')))}",
-            f"Status: {record.get('status', 'unknown')}",
-            f"Balance (Remaining): {escape(format_currency(record.get('balance')))}",
-            f"Monthly Payment: {escape(format_currency(record.get('monthly_payment')))}",
-            f"Amount Overdue: {escape(format_currency(record.get('current_overdue_amount')))}",
-            f"Original Loan Amount: {escape(format_currency(record.get('original_loan_amount')))}",
-            f"Days Overdue: {escape(record.get('days_overdue') or '—')}",
-            "Phone: " + (", ".join(phone_line(p) for p in phones) if phones else "None on file"),
-            f"Imported: {escape(format_date(record.get('import_timestamp')))}",
-            f"Last Edited: {escape(format_date(record.get('last_edited_timestamp')))}",
-        ]
-    )
-    if record.get("warning_note"):
-        lines.append(f"⚠️ {escape(record['warning_note'])}")
-
-    notes = record.get("notes") or []
-    if notes:
-        lines.append("")
-        lines.append(f"📝 Notes ({len(notes)}):")
-        for note in notes[:5]:
-            lines.append(f"- {escape(note['text'])}")
-        if len(notes) > 5:
-            lines.append(f"...and {len(notes) - 5} more.")
-
-    history = record.get("history") or []
-    if history:
-        lines.append("")
-        lines.append(f"🕘 History ({len(history)}):")
-        for event in history[:8]:
-            timestamp = (event.get("event_timestamp") or "?").split("T")[0]
-            lines.append(f"- {timestamp}  {event['event_type']}")
-        if len(history) > 8:
-            lines.append(f"...and {len(history) - 8} more.")
-
-    return "\n".join(lines)
+    return _tf_render_record(record)
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +246,11 @@ async def customer_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     if len(results) == 1:
         record = await database.async_get_customer_record(results[0]["id"])
-        await update.effective_message.reply_text(render_customer_record(record))
+        await update.effective_message.reply_text(
+            render_customer_record(record),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
         return
 
     await update.effective_message.reply_text(
@@ -321,7 +278,11 @@ async def handle_customer_callback(update: Update, context: ContextTypes.DEFAULT
         if record is None:
             await query.message.reply_text("Customer not found.")
             return
-        sent = await query.message.reply_text(render_customer_record(record))
+        sent = await query.message.reply_text(
+            render_customer_record(record),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
         # Store the message so the queue handler can clean it up when
         # the operator advances to the next customer.
         # Use getattr for test compatibility -- fake contexts may not
@@ -710,7 +671,11 @@ async def handle_customer_action_callback(update: Update, context: ContextTypes.
             if record is None:
                 await query.message.reply_text("Customer not found.")
                 return
-            await query.message.reply_text(render_customer_record(record))
+            await query.message.reply_text(
+                render_customer_record(record),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
             return
 
     except Exception:
