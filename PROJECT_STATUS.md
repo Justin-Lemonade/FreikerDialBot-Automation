@@ -259,9 +259,9 @@ The audit covered the canonical documentation, repository tree, frontend structu
 
 The Settings page still contains deliberately disabled placeholders for several categories, including Display, Search, Language, Accent Color, Animation Intensity, and parts of Admin/Diagnostics, plus a few remaining Queue rows (Active Queue vs New Contacts, Resume/Restart Behavior). Phone Handling and Queue > Pre-ready Count became real, backend-enforced settings in UI Pass 5 -- see `FreikerDialBot_UI_UX_Development_Log.md`. These are not bugs merely because they are disabled. Implementing them requires UX/product decisions; keep major work with Claude.
 
-### GAP-015 — Pre-ready N-deep customers
+### GAP-015 — Pre-ready N-deep customers (RESOLVED)
 
-The UI/UX log identifies this as the largest remaining Settings/backend capability gap. It requires defining the desired queue semantics before implementation. Claude/user first; smaller model only for subsequent bounded wiring/tests.
+~~The UI/UX log identifies this as the largest remaining Settings/backend capability gap. It requires defining the desired queue semantics before implementation. Claude/user first; smaller model only for subsequent bounded wiring/tests.~~ Implemented as Settings > Queue > Pre-ready Count: a real, backend-enforced `preReadyCount` setting (0-3, default 0) in `GET/POST /settings` (`mini_app_api.MiniAppService.update_settings`, validated to 0-3), read by `GET /queue/upcoming?count=N` which previews up to N upcoming customers using the same deterministic `get_next_actionable_customer` ordering/blacklist-skipping as the single-customer form (additive and backward compatible). UI Pass 5 wired the frontend selector and the non-interactive "UP NEXT" strip. Commits: `b6b5c08` (backend), `d36132a` (frontend). Focused tests cover persistence, rejection of invalid values, and the `?count=N` list shape.
 
 ### GAP-016 — Paid write path
 
