@@ -377,7 +377,18 @@ export const Settings = ({ isStale, lastSyncedAt }: Props) => {
       </Section>
 
       <Section title="APPEARANCE">
-        <SettingRow label="Telegram Theme" description="Uses WebApp theme colors" value="ON" />
+        {/* Was previously claimed "ON -- Uses WebApp theme colors", but
+            nothing in the codebase reads window.Telegram.WebApp
+            .themeParams or calls setHeaderColor/setBackgroundColor --
+            grep confirms zero references. That claim was false, found
+            during this pass's independent bug hunt (section 19: "fake
+            settings"). The retro-spacecraft palette is a deliberate,
+            fixed design (this pass's own brief: "preserve... spacecraft
+            atmosphere"), not something that should flip to Telegram's
+            theme -- so the fix is correcting the claim, not building
+            real theme integration that would undermine the intended
+            look. */}
+        <SettingRow label="Telegram Theme" description="Uses the app's own fixed retro palette, not Telegram's theme" value="Custom" />
         <SettingRow label="Haptics" description="Vibrations for key actions" value="ON" />
         <SettingRow label="Accent Color" description="Override the default green accent" value="-" disabled />
         <SettingRow label="Animation Intensity" description="Motion for transitions/glow" value="-" disabled />
