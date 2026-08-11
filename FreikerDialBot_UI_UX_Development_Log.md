@@ -99,6 +99,75 @@ pass's Home-screen restructuring made the card the *only* thing on the
 
 ---
 
+## UI Pass 5 (this pass)
+
+**Brief:** the three highest-priority items UI Pass 4 left for next
+time, in order: (1) a real screen-by-screen responsive-layout audit,
+(2) Settings > Phone Handling, (3) Pre-ready N-deep customers
+(Settings > Queue).
+
+### Self-review
+
+**Claimed complete:**
+1. Responsive audit -- found and fixed a real bug: Landing's
+   `min-h-[calc(100dvh-8.5rem)]` (flagged as unverified in Pass 4) was
+   double-counting the bottom-nav clearance that `MainLayout`'s
+   `<main>` already reserves via `pb-28`, forcing an unnecessary
+   scrollbar on Home. Fixed by making `<main>` a flex column and
+   Landing `flex-1`/`min-h-0`, so it fills exactly the space its
+   parent has left -- no guessed constant at all, not just a better
+   guess. Rest of the audit (Home/Calling, CustomerCard, OutcomeButtons,
+   Search, Commands, CustomerDetail, SettingsDrawer, SessionComplete)
+   found no other viewport-height magic numbers and no fixed pixel
+   widths that would clip at 320px.
+2. Settings > Phone Handling -- Primary Phone Preference (real
+   GET/POST /settings setting, backend-enforced reordering in
+   `_ordered_phone_numbers`/`_customer_payload`, blacklist fallback
+   verified) and Quick Number Switching (tap a number on the call card
+   to make it the one CALL CUSTOMER dials, on top of the existing
+   tap-to-dial behavior which is unchanged).
+3. Settings > Queue > Pre-ready Count -- real 0-3 setting;
+   `GET /queue/upcoming?count=N` (additive, backward-compatible with
+   the existing single-customer callers) previews that many upcoming
+   customers using the same `get_next_actionable_customer`
+   ordering/blacklist-skipping the single-customer form already used;
+   frontend prefetches and renders them as a non-interactive "UP NEXT"
+   strip on the calling screen so the setting has an observable effect.
+
+**Actually complete, verified:** all of the above --
+`pytest tests/ -q` (400 passed, up from 391), `npx tsc -b --noEmit`
+clean, `npm run test` (38 passed, up from 37), `npm run build` clean,
+`npx oxlint` (0 warnings/errors). Commits pushed and verified against
+the GitHub API (HEAD SHA + per-file diff) after each push, not just
+trusted from `git push`'s exit code.
+
+**Explicitly not done / left as placeholders:** Display, Search,
+Language, and the remaining Queue rows (Active Queue vs New Contacts,
+Resume/Restart Behavior) are still honest disabled placeholders --
+out of scope for this pass's three listed priorities, not silently
+dropped.
+
+**Design/architecture notes for whoever picks this up next:**
+- `first_non_blacklisted_phone` itself was left untouched (still
+  first-in-list-order); the preference is applied one layer up, by
+  reordering the candidate list `_customer_payload` hands it. Keeps
+  the fallback logic (skip blacklisted, fall back to next available)
+  in exactly one place.
+- `queue_upcoming`'s `count` param is additive/optional specifically
+  to avoid a breaking change to the existing single-customer response
+  shape and its test coverage -- worth keeping that contract in mind
+  if `/queue/upcoming` is touched again.
+- The "UP NEXT" strip is deliberately non-interactive (no tap-to-jump)
+  to keep Pre-ready Count a preview of the real queue, not a second
+  queue-manipulation surface living in the frontend.
+
+### Commits this pass
+- `5171963` Fix Landing screen overflow (flex sizing, not a guessed constant)
+- `86d716c` Backend: Phone Handling + Pre-ready Count settings
+- `fcbcb01` Frontend: wire both settings in
+
+---
+
 ## UI Pass 3
 
 **Brief (approximate, reconstructed from `PROJECT_STATUS.md`):** compact

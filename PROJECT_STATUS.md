@@ -257,7 +257,7 @@ The audit covered the canonical documentation, repository tree, frontend structu
 
 ### GAP-014 — Settings functionality
 
-The Settings page still contains deliberately disabled placeholders for several categories, including Phone Handling, Display, Queue, Search, Language, Accent Color, Animation Intensity, and parts of Admin/Diagnostics. These are not bugs merely because they are disabled. Implementing them requires UX/product decisions; keep major work with Claude.
+The Settings page still contains deliberately disabled placeholders for several categories, including Display, Search, Language, Accent Color, Animation Intensity, and parts of Admin/Diagnostics, plus a few remaining Queue rows (Active Queue vs New Contacts, Resume/Restart Behavior). Phone Handling and Queue > Pre-ready Count became real, backend-enforced settings in UI Pass 5 -- see `FreikerDialBot_UI_UX_Development_Log.md`. These are not bugs merely because they are disabled. Implementing them requires UX/product decisions; keep major work with Claude.
 
 ### GAP-015 — Pre-ready N-deep customers
 
