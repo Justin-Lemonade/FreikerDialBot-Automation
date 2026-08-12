@@ -13,7 +13,116 @@ From Pass 4 onward, update this file at the end of every pass.
 
 ---
 
-## UI Pass 6 — "Post–UI Pass 5" audit and completion (this pass)
+## UI Pass 7 — Remaining Settings placeholders completion (this pass)
+
+**Brief:** implement the six remaining disabled Settings placeholders
+(Compact vs Expanded Cards, Progress Density, Notes Preview, Default
+Search Fields, Accent Color, Animation Intensity) using specific
+directions provided, unless repository evidence indicated a better
+existing approach; preserve the established retro-spacecraft UI/UX;
+no greenfield rewrite; verify against real repository evidence rather
+than blindly implementing.
+
+### What was implemented, and why each is real (not fake)
+
+1. **Compact vs Expanded Cards** (`cardDensity`) -- `CustomerCard`
+   tightens padding/gaps and hides secondary chrome (the CUSTOMER n/m
+   + LIVE badge row -- redundant with ProgressHeader's own n/m counter
+   -- and the "PHONE NUMBERS" caption) in compact mode. The info grid
+   itself is always retained regardless of density, per the given
+   direction ("tighter spacing, reduced secondary info, retain info
+   grid").
+2. **Progress Density** (`progressDensity`) -- `ProgressHeader` renders
+   10/20/30 segments for low/normal/high. Purely visual: the real
+   `currentIndex`/`totalCount`/`progressPercent` values are unchanged
+   regardless of this setting, matching the given direction ("visual
+   UI density, not queue semantics").
+3. **Notes Preview** (`notesPreview`) -- `CustomerCard` shows a
+   truncated, single-line preview of the customer's latest note when
+   on. Uses the *same* `warning_note` field the existing note editor in
+   `MainLayout` already reads/writes -- no new note storage invented,
+   nothing fabricated. Renders nothing if there's no note on file.
+4. **Default Search Fields** (`defaultSearchFields`) -- the one setting
+   with real backend enforcement, per the given direction ("backend
+   remains authoritative"): `Database.search_customers` gained an
+   optional `fields` param (`name`/`loanNumber`/`phone`) scoping its
+   WHERE clause; `MiniAppService.search_customers` reads the stored
+   setting and passes it through, so the Settings screen and the
+   search endpoint can't disagree. An empty selection falls back to
+   searching everything at both layers rather than silently returning
+   zero results for every query forever.
+5. **Accent Color** (`accentColor`) -- a fixed four-color palette
+   (green/blue/amber/purple), per the given direction ("fixed palette
+   via design tokens, not a free color picker"). Reuses hex values
+   already defined in `index.css` (`--accent-blue`/`-amber`/`-purple`)
+   rather than inventing new colors; applied via a `data-accent`
+   attribute on the document root that overrides the same
+   `--accent-green`/`-strong`/`-text` variable names every component
+   already references, so no component needed to change.
+6. **Animation Intensity** (`animationIntensity`) -- Low/Normal/High,
+   default Normal, per the given direction. Retimes the app's existing
+   named animations (`.retro-button`, `.progress-cell.is-charging`,
+   `.progress-count.is-pulsing`, `.card-jump-out`/`-in`,
+   `.drawer-panel`/`-backdrop`, `.nav-tab-icon`) via a `data-motion`
+   attribute -- no new keyframes or animated elements added, per the
+   brief's explicit "do not create new animations outside existing
+   scope." The existing `prefers-reduced-motion: reduce` block (which
+   uses `!important`) still overrides all of them regardless of this
+   setting, unchanged.
+
+All six default to exactly the app's pre-existing behavior (expanded
+cards, 20 progress segments, no notes preview, all three search fields,
+green accent, normal-speed animation) for anyone who has never touched
+Settings -- same pattern as every prior real setting in this app.
+
+### Self-review
+
+**Actually complete, verified:** `pytest tests/ -q` 443 passed (up from
+a 425 baseline -- 18 new backend tests: settings persistence/validation
+for all six, plus `Database.search_customers`'s new `fields` param
+directly), `npx tsc -b --noEmit` clean, `npm run test` 38 passed (no
+new frontend test infrastructure -- existing Vitest setup only), `npm
+run build` clean, `npx oxlint` 0 warnings/0 errors.
+
+**Design decisions made without further clarification, per the given
+directions:**
+- Notes Preview shows the single `warning_note` field (the only "note"
+  concept that exists on the lightweight current-customer payload used
+  on the calling screen) rather than the fuller notes/event history
+  `CustomerDetail` reads from `get_customer_record` -- that fuller
+  history is what "full notes elsewhere" in the given direction refers
+  to, and pulling it into the compact calling card would fight the
+  same "don't overload the main calling interface" principle
+  `CustomerCard`'s own existing docs already establish.
+- Accent Color's "-strong" (border) variants for blue/amber/purple are
+  newly computed darker shades of each hue (following the same
+  darken-for-emphasis pattern the existing green/blue text-on-accent
+  pairs already use), since only green and blue had pre-existing
+  `-text` pairs and none had a documented `-strong` counterpart for a
+  non-green accent before this pass.
+- Compact mode's specific chrome to hide (index/LIVE badge, phone
+  caption) was chosen because both are genuinely secondary/redundant
+  information (the index is duplicated in ProgressHeader; the caption
+  is a label for content that's self-evidently phone numbers), not
+  because of a hard product rule -- a reasonable person could draw the
+  line differently, and that's a fair follow-up discussion, not a bug.
+
+**Explicitly not done / correctly still deferred:** Call Delay,
+Next-Customer Hold, Retry/Callback Behavior (Calling Behavior), Russian
+and Tajik (Language -- no translation content exists to select), and
+Version Info (Admin/Diagnostics) remain disabled placeholders. None of
+these were in this pass's six-item scope, and none surfaced evidence
+during this pass suggesting the architecture already has one obvious
+real answer worth documenting the way Queue's two rows did in the
+previous pass.
+
+### Commits this pass
+- `21fdbe1` Backend: all six settings (validation, storage, search-field enforcement)
+- `e7aa05e` Frontend: all six settings wired (UI rows, CustomerCard/ProgressHeader/index.css)
+
+---
+
+## UI Pass 6 — "Post–UI Pass 5" audit and completion
 
 **Brief:** do not assume UI Pass 5's claims are still correct --
 independently re-verify the repository first, then work through a
