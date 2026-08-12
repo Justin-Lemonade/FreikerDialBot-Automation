@@ -12,7 +12,7 @@ import { useSession } from './hooks/useSession';
 import { useCustomer } from './hooks/useCustomer';
 import { useTelegram } from './hooks/useTelegram';
 import { useCallTimer } from './hooks/useCallTimer';
-import { useAppSettings } from './hooks/useAppSettings';
+import { useAppSettings } from './hooks/appSettingsContext';
 import { useUpcomingQueue } from './hooks/useUpcomingQueue';
 import { api, ApiError } from './api/client';
 import type { Customer, Screen } from './types';

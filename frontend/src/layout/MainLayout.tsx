@@ -145,7 +145,7 @@ export const MainLayout = ({
                 className={`nav-tab flex min-h-[58px] flex-1 flex-col items-center justify-center gap-1 rounded-[10px] ${isActive ? 'is-active' : ''}`}
                 style={{
                   color: isActive ? 'var(--accent-green)' : 'var(--text-muted)',
-                  background: isActive ? 'rgba(111, 224, 138, 0.12)' : 'transparent',
+                  background: isActive ? 'var(--accent-green-glow)' : 'transparent',
                   border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'transparent'}`,
                 }}
               >

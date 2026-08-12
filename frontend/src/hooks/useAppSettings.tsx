@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError } from '../api/client';
 import type { AppSettings } from '../types';
+import { AppSettingsContext, DEFAULT_SETTINGS } from './appSettingsContext';
 
 /**
  * The only Settings state that is real: backed by GET/POST /settings on
@@ -19,26 +20,24 @@ import type { AppSettings } from '../types';
  * (accentColor/animationIntensity). Everything else on the Settings
  * screen stays a disabled placeholder -- see Settings.tsx.
  *
- * Falls back to the same defaults the backend itself falls back to
- * (unlimited attempts, auto-advance on) so the UI never flashes a
- * different value than what actually governs behavior before the first
- * fetch resolves.
+ * A plain per-call-site useState (the previous implementation) meant
+ * every component that called useAppSettings() -- App.tsx AND every
+ * individual row in Settings.tsx -- got its OWN independent copy of
+ * this state, each with its own mount-time GET /settings fetch. A row
+ * saving a change updated only that row's own local state (and the
+ * backend); every OTHER instance, including App.tsx's -- the one that
+ * actually drives data-accent/data-motion, the props passed to
+ * Home/CustomerCard/MainLayout, and onStartCall's phone logic --
+ * stayed stale until a full page reload. Found during UI Pass 8's
+ * audit (section 20, "Live Settings State" / section 25, "settings
+ * that persist correctly but do not actually affect behavior") by
+ * tracing every call site rather than trusting that a green test
+ * suite meant this worked. This Provider is the fix: the one real
+ * useState/useEffect/updateSettings instance (unchanged logic, just
+ * relocated), shared via Context so every call site -- App.tsx and
+ * every Settings.tsx row alike -- reads and writes the same value.
  */
-const DEFAULT_SETTINGS: AppSettings = {
-  maxCallAttempts: null,
-  autoAdvance: true,
-  primaryPhonePreference: 'first',
-  preReadyCount: 0,
-  visibleFields: ['daysOverdue', 'monthlyPayment'],
-  cardDensity: 'expanded',
-  progressDensity: 'normal',
-  notesPreview: false,
-  defaultSearchFields: ['name', 'loanNumber', 'phone'],
-  accentColor: 'green',
-  animationIntensity: 'normal',
-};
-
-export const useAppSettings = () => {
+export const AppSettingsProvider = ({ children }: { children: ReactNode }) => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,26 +63,33 @@ export const useAppSettings = () => {
     setError(null);
     // Optimistic update -- reverted below if the request fails, so a
     // tap always feels immediate but is never left inconsistent with
-    // what the backend actually persisted.
-    const previous = settings;
-    setSettings((current) => ({ ...current, ...fields }));
+    // what the backend actually persisted. Because this state now
+    // lives in one Provider instance, this update is immediately
+    // visible to every consumer (App.tsx's data-accent/data-motion
+    // effects, Home/CustomerCard's props, etc.), not just the row
+    // that triggered it.
+    let previous: AppSettings | undefined;
+    setSettings((current) => {
+      previous = current;
+      return { ...current, ...fields };
+    });
     try {
       const result = await api.updateSettings(fields);
       if (!result.ok || !result.settings) {
-        setSettings(previous);
+        if (previous) setSettings(previous);
         setError(result.error || 'Could not save that setting.');
         return false;
       }
       setSettings(result.settings);
       return true;
     } catch (err) {
-      setSettings(previous);
+      if (previous) setSettings(previous);
       setError(err instanceof ApiError ? err.message : 'Could not save that setting.');
       return false;
     } finally {
       setIsSaving(false);
     }
-  }, [settings]);
+  }, []);
 
-  return { settings, updateSettings, isSaving, error };
+  return <AppSettingsContext.Provider value={{ settings, updateSettings, isSaving, error }}>{children}</AppSettingsContext.Provider>;
 };

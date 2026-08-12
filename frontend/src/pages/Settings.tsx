@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useAppSettings } from '../hooks/useAppSettings';
+import { useAppSettings } from '../hooks/appSettingsContext';
 import type { VisibleField } from '../types';
 
 interface Props {
@@ -574,7 +574,7 @@ const Section = ({ title, children }: SectionProps) => (
  * Auto Advance, Primary Phone Preference, Pre-ready Count, Visible
  * Fields, Card Density, Progress Density, Notes Preview, Default
  * Search Fields, Accent Color, and Animation Intensity (all
- * useAppSettings.ts / GET/POST /settings), and Backend Connectivity /
+ * useAppSettings.tsx / GET/POST /settings), and Backend Connectivity /
  * Sync Status (useSession.ts's isStale/lastSyncedAt).
  *
  * Everything else is an honest, disabled "Coming soon" placeholder --
@@ -597,7 +597,7 @@ export const Settings = ({ isStale, lastSyncedAt }: Props) => {
         <SettingRow label="Show Both Numbers" description="Always on -- see the call card" value="ON" />
         <PrimaryPhoneRow />
         <SettingRow label="Quick Number Switching" description="Tap a number on the call card to make it active" value="ON" />
-        <SettingRow label="Tap-to-Dial" description="Always on for every number on file" value="ON" />
+        <SettingRow label="Tap-to-Dial" description="For every non-blacklisted number on file" value="ON" />
       </Section>
 
       <Section title="DISPLAY">

@@ -129,21 +129,36 @@ export const CustomerDetail = ({ customerId, onBack, backLabel = '← BACK TO SE
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {record.phones.map((entry) => (
-                    <a
-                      key={entry.number}
-                      href={`tel:${entry.number}`}
-                      className="retro-button min-h-[40px] px-3 py-2 font-data text-base"
-                      style={{
-                        border: `1px solid ${entry.isBlacklisted ? 'var(--accent-red)' : 'var(--border-frame)'}`,
-                        color: entry.isBlacklisted ? 'var(--accent-red)' : 'var(--accent-green)',
-                        textDecoration: entry.isBlacklisted ? 'line-through' : 'none',
-                        opacity: entry.isBlacklisted ? 0.7 : 1,
-                      }}
-                    >
-                      {entry.number}
-                    </a>
-                  ))}
+                  {record.phones.map((entry) =>
+                    // Same fix as CustomerCard: blacklisted numbers are
+                    // shown (struck through, dimmed) but must not be
+                    // dialable -- rendered as a plain span instead of a
+                    // tel: link.
+                    entry.isBlacklisted ? (
+                      <span
+                        key={entry.number}
+                        className="min-h-[40px] px-3 py-2 font-data text-base"
+                        style={{
+                          border: '1px solid var(--accent-red)',
+                          color: 'var(--accent-red)',
+                          textDecoration: 'line-through',
+                          opacity: 0.7,
+                          cursor: 'not-allowed',
+                        }}
+                      >
+                        {entry.number}
+                      </span>
+                    ) : (
+                      <a
+                        key={entry.number}
+                        href={`tel:${entry.number}`}
+                        className="retro-button min-h-[40px] px-3 py-2 font-data text-base"
+                        style={{ border: '1px solid var(--border-frame)', color: 'var(--accent-green)' }}
+                      >
+                        {entry.number}
+                      </a>
+                    ),
+                  )}
                 </div>
               )}
             </div>

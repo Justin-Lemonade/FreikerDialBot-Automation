@@ -43,6 +43,13 @@
   --accent-green: #6fe08a;
   --accent-green-strong: #3ddc6f;
   --accent-green-text: #0a1f10;
+  /* Translucent wash for the active-state background behind nav tabs
+     etc. -- a token specifically so it can be overridden per accent
+     color below, same as -strong/-text. Bare rgba(111, 224, 138, ...)
+     inline in a component would silently stay green forever regardless
+     of the selected accent (found during UI Pass 8's accent-color
+     audit -- see MainLayout.tsx's nav-tab background). */
+  --accent-green-glow: rgba(111, 224, 138, 0.12);
 
   /* Secondary action states */
   --accent-blue: #4f9dff;
@@ -91,8 +98,8 @@
 /* Settings > Appearance > Accent Color -- a fixed palette (not a free
    picker, per the brief), applied via a data-accent attribute App.tsx
    sets on <html> from the real GET/POST /settings value. Each block
-   overrides the exact same --accent-green/-strong/-text variable names
-   every component already references, reusing hex values already
+   overrides the exact same --accent-green/-strong/-text/-glow variable
+   names every component already references, reusing hex values already
    defined above (accent-blue/-amber/-purple) rather than inventing new
    colors -- "green" is the default and needs no override block since
    :root above already defines it. */
@@ -100,18 +107,21 @@
   --accent-green: var(--accent-blue);
   --accent-green-strong: #2f7fe0;
   --accent-green-text: var(--accent-blue-text);
+  --accent-green-glow: rgba(79, 157, 255, 0.12);
 }
 
 [data-accent='amber'] {
   --accent-green: var(--accent-amber);
   --accent-green-strong: #c99a2e;
   --accent-green-text: var(--accent-amber-text);
+  --accent-green-glow: rgba(224, 184, 79, 0.12);
 }
 
 [data-accent='purple'] {
   --accent-green: var(--accent-purple);
   --accent-green-strong: #6d3fc0;
   --accent-green-text: var(--accent-purple-text);
+  --accent-green-glow: rgba(138, 92, 214, 0.12);
 }
 
 #root {

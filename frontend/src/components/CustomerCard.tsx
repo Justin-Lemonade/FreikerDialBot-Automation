@@ -205,6 +205,31 @@ export const CustomerCard = ({
           <div className="flex flex-wrap gap-2">
             {customer.phones.map((entry) => {
               const isActive = !entry.isBlacklisted && entry.number === activePhone;
+              // Blacklisted numbers are shown (strikethrough, dimmed,
+              // red) but must not actually be dialable -- a real bug
+              // found during UI Pass 8's audit: the crossed-out styling
+              // implied "don't use this one" while the tel: link still
+              // fully worked, letting a tap place a call to a number
+              // that's specifically on file as one to avoid. Rendered
+              // as a plain span instead of an <a> for that case: same
+              // look, no href, no onClick, nothing to tap.
+              if (entry.isBlacklisted) {
+                return (
+                  <span
+                    key={entry.number}
+                    className="min-h-[36px] px-3 py-1.5 font-data text-base"
+                    style={{
+                      border: '1px solid var(--accent-red)',
+                      color: 'var(--accent-red)',
+                      textDecoration: 'line-through',
+                      opacity: 0.7,
+                      cursor: 'not-allowed',
+                    }}
+                  >
+                    {entry.number}
+                  </span>
+                );
+              }
               return (
                 <a
                   key={entry.number}
@@ -212,11 +237,9 @@ export const CustomerCard = ({
                   onClick={() => onSelectPhone?.(entry.number)}
                   className="retro-button min-h-[36px] px-3 py-1.5 font-data text-base"
                   style={{
-                    border: `1px solid ${entry.isBlacklisted ? 'var(--accent-red)' : isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
-                    color: entry.isBlacklisted ? 'var(--accent-red)' : isActive ? 'var(--accent-green-text)' : 'var(--accent-green)',
+                    border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
+                    color: isActive ? 'var(--accent-green-text)' : 'var(--accent-green)',
                     background: isActive ? 'var(--accent-green)' : 'transparent',
-                    textDecoration: entry.isBlacklisted ? 'line-through' : 'none',
-                    opacity: entry.isBlacklisted ? 0.7 : 1,
                   }}
                 >
                   {isActive ? '● ' : ''}
