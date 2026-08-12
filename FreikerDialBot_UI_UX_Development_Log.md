@@ -13,7 +13,117 @@ From Pass 4 onward, update this file at the end of every pass.
 
 ---
 
-## UI Pass 7 — Remaining Settings placeholders completion (this pass)
+## UI Pass 8 — Cross-screen consistency and live-state audit (this pass)
+
+**Brief:** audit the whole app end-to-end for cross-screen consistency,
+dead/misleading interactive elements, and settings that don't actually
+take live effect -- not a re-verification of a prior pass's specific
+claims, a fresh look across every screen and shared component.
+
+### Self-review
+
+**Two real, substantive bugs found and fixed (not busywork):**
+
+1. **Settings didn't update live for almost anyone touching them.**
+   `useAppSettings` was a plain hook with its own `useState`, called
+   independently 12 times across the tree (`App.tsx` once, each of the
+   11 `Settings.tsx` row components once -- `MaxCallAttemptsRow`,
+   `AutoAdvanceRow`, `PrimaryPhoneRow`, `PreReadyCountRow`,
+   `VisibleFieldsRow`, `CardDensityRow`, `ProgressDensityRow`,
+   `NotesPreviewRow`, `DefaultSearchFieldsRow`, `AccentColorRow`,
+   `AnimationIntensityRow`). Each instance had its own local state and
+   its own mount-time `GET /settings` fetch. Saving a change in one row
+   correctly updated that row's own copy and the backend -- but every
+   *other* instance, including `App.tsx`'s own (the one that actually
+   sets the `data-accent`/`data-motion` document-root attributes and
+   passes `cardDensity`/`notesPreview`/`progressDensity`/`preReadyCount`
+   down to `Home`/`CustomerCard`/`MainLayout`), had no way to find out
+   and stayed on its stale mount-time value until a full page reload.
+   In practice: change Accent Color, watch the swatch you tapped light
+   up correctly in Settings, close Settings, and the app's actual
+   accent hadn't changed at all.
+
+   Fixed by converting the hook into a React Context
+   (`AppSettingsProvider`, mounted once in `main.tsx` wrapping `<App
+   />`) so there's exactly one real instance of this state, and every
+   call site reads/writes the same value. Required a small file split
+   -- putting `AppSettingsProvider` (a component) and the `useAppSettings`
+   consumer hook (not a component) in the same file tripped oxlint's
+   `react-refresh/only-export-components` rule, so the Context/hook/
+   defaults moved to a new plain module (`hooks/appSettingsContext.ts`)
+   and `hooks/useAppSettings.tsx` now exports only the Provider.
+
+   This is the kind of bug a green test suite structurally cannot
+   catch on its own -- there's no component-rendering test harness in
+   this project (no React Testing Library), and even a unit test on
+   the hook in isolation wouldn't reveal that *two instances of it*
+   stop agreeing with each other. Found by tracing every call site by
+   hand rather than trusting that persisted-and-returns-200 meant
+   "works."
+
+2. **Blacklisted phone numbers were still tap-to-dial**, in both
+   `CustomerCard.tsx` (the calling screen) and `CustomerDetail.tsx`
+   ("More Info"). The strikethrough/dimmed/red styling correctly
+   signals "don't use this one," but the element was still a live
+   `<a href="tel:...">` underneath -- tapping it would place the call
+   anyway, directly defeating the point of blacklisting a number in
+   the first place. Fixed by rendering blacklisted entries as a
+   non-interactive `<span>` (same visual styling, no `href`, no
+   `onClick`) in both places. This also meant the "Tap-to-Dial: Always
+   on for every number on file" Settings row became inaccurate the
+   moment this shipped -- corrected to "For every non-blacklisted
+   number on file" in the same pass rather than leaving stale doc
+   drift for someone else to catch later.
+
+**One smaller, real bug found and fixed alongside the above:**
+
+3. **Accent Color left one spot permanently green.** The active
+   bottom-nav tab's background glow was a hardcoded literal
+   `rgba(111, 224, 138, 0.12)` (green's RGB triple) rather than a CSS
+   variable -- so the border and text around it correctly re-colored
+   under Blue/Amber/Purple, but that one background wash never did.
+   Added a `--accent-green-glow` token, overridden per accent alongside
+   the pre-existing `-strong`/`-text` tokens, and fixed the one
+   hardcoded call site in `MainLayout.tsx`. A repo-wide grep for the
+   literal green hex/rgb values confirmed no other component has the
+   same problem (one intentional exception left alone: `Landing.tsx`'s
+   hero-logo glow, which is a fixed brand mark rather than a themed UI
+   element, same reasoning a company logo doesn't recolor with a user's
+   theme preference).
+
+**Re-audited and found already correct, no changes made:** `Search.tsx`
+(keyboard-safe, highlighting reflects real matches, no overflow),
+`Commands.tsx` (every button/typed command maps to a real API call or
+navigation, help output generated from the same table that backs
+execution), `OutcomeButtons.tsx` (Didn't Answer left / Contacted right,
+More Info secondary), `CallButton.tsx` and `SessionComplete.tsx` (fully
+token-driven, no hardcoded accent bypass), `ProgressHeader.tsx`'s three
+density levels, Default Search Fields' backend enforcement
+(`MiniAppService.search_customers` still correctly scopes
+`Database.search_customers`'s WHERE clause), and Notes Preview's
+non-fabrication (`customer.notes` only ever reflects the real
+`warning_note` field; renders nothing when empty rather than a
+placeholder).
+
+**Actually complete, verified:** backend suite unaffected by this
+pass's frontend-only changes (446 passed throughout); `npm run test`
+steady at 38 passed; `npx tsc -b --noEmit`, `npm run build`, and
+`npx oxlint` (0 warnings, 0 errors) all clean after the Context
+refactor and the file split it required.
+
+**Explicitly not attempted this pass:** a full redesign or new
+animation/visual work -- this pass was scoped to consistency and
+correctness across what already exists, not new features. The six
+Settings placeholders still outstanding (Call Delay, Next-Customer
+Hold, Retry/Callback Behavior, Russian/Tajik, Version Info) remain
+untouched, same as before this pass.
+
+### Commits this pass
+- `e40c466` Fix Live Settings State (Context refactor), blacklisted-number tap-to-dial, accent glow
+
+---
+
+## UI Pass 7 — Remaining Settings placeholders completion
 
 **Brief:** implement the six remaining disabled Settings placeholders
 (Compact vs Expanded Cards, Progress Density, Notes Preview, Default
