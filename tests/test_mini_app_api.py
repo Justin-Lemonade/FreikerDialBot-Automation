@@ -237,7 +237,12 @@ def test_settings_endpoint_defaults_to_unlimited_and_auto_advance_on(api_server)
         "primaryPhonePreference": "first",
         "preReadyCount": 0,
         "visibleFields": ["daysOverdue", "monthlyPayment"],
-        "animationIntensity": "full",
+        "cardDensity": "expanded",
+        "progressDensity": "normal",
+        "notesPreview": False,
+        "defaultSearchFields": ["name", "loanNumber", "phone"],
+        "accentColor": "green",
+        "animationIntensity": "normal",
     }
 
 
@@ -255,7 +260,12 @@ def test_settings_endpoint_persists_max_call_attempts(api_server):
             "primaryPhonePreference": "first",
             "preReadyCount": 0,
             "visibleFields": ["daysOverdue", "monthlyPayment"],
-            "animationIntensity": "full",
+            "cardDensity": "expanded",
+            "progressDensity": "normal",
+            "notesPreview": False,
+            "defaultSearchFields": ["name", "loanNumber", "phone"],
+            "accentColor": "green",
+            "animationIntensity": "normal",
         },
     }
 
@@ -266,29 +276,38 @@ def test_settings_endpoint_persists_max_call_attempts(api_server):
 
 
 class TestAnimationIntensitySetting:
-    def test_defaults_to_full(self, api_server):
+    def test_defaults_to_normal(self, api_server):
         server, service = api_server
         status, settings = _request_json(server, "/settings", service=service)
         assert status == 200
-        assert settings["animationIntensity"] == "full"
+        assert settings["animationIntensity"] == "normal"
 
-    def test_persists_reduced(self, api_server):
+    def test_persists_low(self, api_server):
         server, service = api_server
         status, result = _request_json(
-            server, "/settings", method="POST", payload={"animationIntensity": "reduced"}, service=service
+            server, "/settings", method="POST", payload={"animationIntensity": "low"}, service=service
         )
         assert status == 200
-        assert result["settings"]["animationIntensity"] == "reduced"
+        assert result["settings"]["animationIntensity"] == "low"
 
         status, settings = _request_json(server, "/settings", service=service)
         assert status == 200
-        assert settings["animationIntensity"] == "reduced"
+        assert settings["animationIntensity"] == "low"
 
     def test_rejects_invalid_value(self, api_server):
         server, service = api_server
         with pytest.raises(urllib.error.HTTPError) as exc_info:
             _request_json(
                 server, "/settings", method="POST", payload={"animationIntensity": "extreme"}, service=service
+            )
+        assert exc_info.value.code == 400
+
+        # The scheme is Low/Normal/High (three levels), not the earlier
+        # binary full/reduced proposal -- confirm the old vocabulary is
+        # rejected too, not silently accepted as an alias.
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            _request_json(
+                server, "/settings", method="POST", payload={"animationIntensity": "reduced"}, service=service
             )
         assert exc_info.value.code == 400
 
@@ -574,6 +593,167 @@ def test_settings_endpoint_rejects_invalid_visible_fields(api_server):
     with pytest.raises(urllib.error.HTTPError) as exc_info:
         _request_json(server, "/settings", method="POST", payload={"visibleFields": "balance"}, service=service)
     assert exc_info.value.code == 400
+
+
+def test_settings_endpoint_persists_card_density(api_server):
+    server, service = api_server
+    status, result = _request_json(server, "/settings", method="POST", payload={"cardDensity": "compact"}, service=service)
+    assert status == 200
+    assert result["settings"]["cardDensity"] == "compact"
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["cardDensity"] == "compact"
+
+
+def test_settings_endpoint_rejects_invalid_card_density(api_server):
+    server, service = api_server
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(server, "/settings", method="POST", payload={"cardDensity": "tiny"}, service=service)
+    assert exc_info.value.code == 400
+
+
+def test_settings_endpoint_persists_progress_density(api_server):
+    server, service = api_server
+    status, result = _request_json(server, "/settings", method="POST", payload={"progressDensity": "high"}, service=service)
+    assert status == 200
+    assert result["settings"]["progressDensity"] == "high"
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["progressDensity"] == "high"
+
+
+def test_settings_endpoint_rejects_invalid_progress_density(api_server):
+    server, service = api_server
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(server, "/settings", method="POST", payload={"progressDensity": "extreme"}, service=service)
+    assert exc_info.value.code == 400
+
+
+def test_settings_endpoint_persists_notes_preview(api_server):
+    server, service = api_server
+    status, result = _request_json(server, "/settings", method="POST", payload={"notesPreview": True}, service=service)
+    assert status == 200
+    assert result["settings"]["notesPreview"] is True
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["notesPreview"] is True
+
+    status, result = _request_json(server, "/settings", method="POST", payload={"notesPreview": False}, service=service)
+    assert status == 200
+    assert result["settings"]["notesPreview"] is False
+
+
+def test_settings_endpoint_persists_accent_color(api_server):
+    server, service = api_server
+    status, result = _request_json(server, "/settings", method="POST", payload={"accentColor": "blue"}, service=service)
+    assert status == 200
+    assert result["settings"]["accentColor"] == "blue"
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["accentColor"] == "blue"
+
+
+def test_settings_endpoint_rejects_invalid_accent_color(api_server):
+    server, service = api_server
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(server, "/settings", method="POST", payload={"accentColor": "chartreuse"}, service=service)
+    assert exc_info.value.code == 400
+
+
+def test_settings_endpoint_persists_animation_intensity(api_server):
+    server, service = api_server
+    status, result = _request_json(
+        server, "/settings", method="POST", payload={"animationIntensity": "low"}, service=service
+    )
+    assert status == 200
+    assert result["settings"]["animationIntensity"] == "low"
+    status, settings = _request_json(server, "/settings", service=service)
+    assert status == 200
+    assert settings["animationIntensity"] == "low"
+
+
+def test_settings_endpoint_rejects_invalid_animation_intensity(api_server):
+    server, service = api_server
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(server, "/settings", method="POST", payload={"animationIntensity": "extreme"}, service=service)
+    assert exc_info.value.code == 400
+
+
+def test_settings_endpoint_persists_default_search_fields_in_fixed_order(api_server):
+    server, service = api_server
+    status, result = _request_json(
+        server, "/settings", method="POST", payload={"defaultSearchFields": ["phone", "name"]}, service=service
+    )
+    assert status == 200
+    assert result["settings"]["defaultSearchFields"] == ["name", "phone"]
+
+
+def test_settings_endpoint_rejects_invalid_default_search_fields(api_server):
+    server, service = api_server
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _request_json(
+            server, "/settings", method="POST", payload={"defaultSearchFields": ["email"]}, service=service
+        )
+    assert exc_info.value.code == 400
+
+
+def test_default_search_fields_restricts_search_endpoint(api_server):
+    """The real enforcement point: search_customers reads the same
+    setting search_customers's WHERE clause is scoped by -- a customer
+    findable only by phone shouldn't turn up when Phone is the one
+    field group disabled."""
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "sf-only-findable-by-phone",
+                "first_name": "Zzz-no-name-match",
+                "last_name": "Zzz-no-name-match",
+                "phone_numbers": ["+15559998888"],
+                "balance": "10",
+                "days_overdue": "1",
+            }
+        ]
+    )
+    # Sanity check: findable by phone before restricting anything.
+    status, result = _request_json(server, "/customer/search?q=9998888", service=service)
+    assert status == 200
+    assert len(result["results"]) == 1
+
+    _request_json(
+        server, "/settings", method="POST", payload={"defaultSearchFields": ["name", "loanNumber"]}, service=service
+    )
+    status, result = _request_json(server, "/customer/search?q=9998888", service=service)
+    assert status == 200
+    assert result["results"] == []
+
+    # Still findable by loan number, which remains enabled.
+    status, result = _request_json(server, "/customer/search?q=sf-only-findable-by-phone", service=service)
+    assert status == 200
+    assert len(result["results"]) == 1
+
+
+def test_default_search_fields_empty_falls_back_to_searching_everything(api_server):
+    """An operator who disables every field group must not silently
+    break Search for every query -- falls back to the unrestricted
+    default rather than returning zero results forever."""
+    server, service = api_server
+    service.database.insert_customers(
+        [
+            {
+                "loan_number": "sf-fallback",
+                "first_name": "Fallback",
+                "last_name": "Case",
+                "phone_numbers": ["+15551234567"],
+                "balance": "10",
+                "days_overdue": "1",
+            }
+        ]
+    )
+    _request_json(server, "/settings", method="POST", payload={"defaultSearchFields": []}, service=service)
+    status, result = _request_json(server, "/customer/search?q=sf-fallback", service=service)
+    assert status == 200
+    assert len(result["results"]) == 1
 
 
 def test_call_back_respects_max_call_attempts_limit(api_server):

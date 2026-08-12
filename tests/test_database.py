@@ -69,6 +69,33 @@ class TestSearch:
         results = database.search_customers("Ann")
         assert [r["loan_number"] for r in results] == ["L001"]
 
+    def test_search_fields_none_matches_everything_unchanged(self, database):
+        """Default/no restriction (used by every caller predating the
+        Default Search Fields setting) must behave identically to
+        before -- name, loan number, and phone all still match."""
+        assert [r["loan_number"] for r in database.search_customers("Ann", fields=None)] == ["L001"]
+        assert [r["loan_number"] for r in database.search_customers("L002", fields=None)] == ["L002"]
+        assert [r["loan_number"] for r in database.search_customers("0002222", fields=None)] == ["L002"]
+
+    def test_search_fields_restricts_to_name_only(self, database):
+        assert [r["loan_number"] for r in database.search_customers("Ann", fields=["name"])] == ["L001"]
+        assert database.search_customers("L002", fields=["name"]) == []
+        assert database.search_customers("0002222", fields=["name"]) == []
+
+    def test_search_fields_restricts_to_loan_number_only(self, database):
+        assert [r["loan_number"] for r in database.search_customers("L002", fields=["loanNumber"])] == ["L002"]
+        assert database.search_customers("Ann", fields=["loanNumber"]) == []
+
+    def test_search_fields_restricts_to_phone_only(self, database):
+        assert [r["loan_number"] for r in database.search_customers("0002222", fields=["phone"])] == ["L002"]
+        assert database.search_customers("Ann", fields=["phone"]) == []
+
+    def test_search_fields_empty_list_falls_back_to_everything(self, database):
+        """Defensive fallback at this layer too (not just the service
+        layer above it) -- an empty fields list must never mean "match
+        nothing" for every future caller of this method."""
+        assert [r["loan_number"] for r in database.search_customers("Ann", fields=[])] == ["L001"]
+
 
 class TestCustomerEvents:
     def test_get_customer_events_empty_when_nothing_recorded(self, database):

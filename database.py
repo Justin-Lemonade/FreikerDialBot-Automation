@@ -638,7 +638,7 @@ class Database:
     # Search, history, editing, blacklist -- the customer-record surface.
     # -----------------------------------------------------------------------
 
-    def search_customers(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
+    def search_customers(self, query: str, limit: int = 20, fields: list[str] | None = None) -> list[dict[str, Any]]:
         """Search across loan number, name, and phone numbers.
 
         Searches every customer regardless of status (waiting, warned,
@@ -653,24 +653,56 @@ class Database:
         zero results even with a customer named exactly John Smith on
         file, since first_name/last_name are separate columns and
         neither alone contains the full typed string.
+
+        `fields` scopes which of the three field groups
+        ("name", "loanNumber", "phone") get OR'd into the WHERE clause
+        -- the real backend enforcement behind Settings > Search >
+        Default Search Fields (MiniAppService.search_customers reads
+        that setting and passes it through here; nothing about which
+        fields are searched happens client-side). `None` (the default,
+        used by every pre-existing caller) means "no restriction, search
+        all three" -- unchanged from this method's original behavior.
         """
         stripped = query.strip()
         if not stripped:
             return []
         pattern = f"%{stripped}%"
+        active_fields = set(fields) if fields is not None else {"name", "loanNumber", "phone"}
+        clauses: list[str] = []
+        params: list[str] = []
+        if "loanNumber" in active_fields:
+            clauses.append("loan_number LIKE ?")
+            params.append(pattern)
+        if "name" in active_fields:
+            clauses.append("first_name LIKE ?")
+            params.append(pattern)
+            clauses.append("last_name LIKE ?")
+            params.append(pattern)
+            clauses.append("(first_name || ' ' || last_name) LIKE ?")
+            params.append(pattern)
+        if "phone" in active_fields:
+            clauses.append("phone_numbers LIKE ?")
+            params.append(pattern)
+        if not clauses:
+            # Every field group was excluded (e.g. an empty `fields`
+            # list slipped through despite the service layer's own
+            # fallback) -- searching literally nothing would silently
+            # break the Search screen for every query, which is worse
+            # than ignoring an impossible restriction. Fall back to the
+            # unrestricted default rather than returning zero results
+            # for every search.
+            clauses = ["loan_number LIKE ?", "first_name LIKE ?", "last_name LIKE ?", "phone_numbers LIKE ?", "(first_name || ' ' || last_name) LIKE ?"]
+            params = [pattern, pattern, pattern, pattern, pattern]
+        where_sql = " OR ".join(clauses)
         with self.connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT * FROM customers
-                WHERE loan_number LIKE ?
-                   OR first_name LIKE ?
-                   OR last_name LIKE ?
-                   OR phone_numbers LIKE ?
-                   OR (first_name || ' ' || last_name) LIKE ?
+                WHERE {where_sql}
                 ORDER BY id DESC
                 LIMIT ?
                 """,
-                (pattern, pattern, pattern, pattern, pattern, limit),
+                (*params, limit),
             ).fetchall()
             return [self._customer_from_row(row) for row in rows]
 
