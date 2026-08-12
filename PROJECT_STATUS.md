@@ -74,7 +74,7 @@ A task is not complete merely because an AI reports completion; verification evi
 
 ## Active delegations
 
-None recorded as active at the time of this audit.
+None currently in progress by this session. One note for coordination: a concurrent branch `fix/VERIFY-anim-intensity-doc-drift` (task `VERIFY-ANIM-INTENSITY-DOC-DRIFT`, not yet merged to `main` as of this entry) was written against commit `e13974d`'s `animationIntensity: 'full' | 'reduced'` scheme. That scheme was superseded on `main` in commits `9bcdf9e`/`bc0d632` (this session, "UI Pass 7") with `animationIntensity: 'low' | 'normal' | 'high'`, per this pass's explicit brief. If that branch is merged after this entry, its documentation changes will describe a value scheme that no longer exists in the code -- re-verify against live code (`mini_app_api.py`'s `_get_settings`/`update_settings`, `frontend/src/types.ts`) before trusting or merging it, per this file's own Source-of-truth rule above.
 
 ## Delegation record template
 
