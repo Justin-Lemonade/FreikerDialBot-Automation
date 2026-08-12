@@ -117,9 +117,10 @@ fake toggles):**
   a spot-check, not an exhaustive line-by-line audit -- future passes
   should keep looking, not treat this as a closed question.
 
-**Actually complete, verified:** all of the above --
-`pytest tests/ -q` 425 passed (up from a 419 baseline that already
-included an unrelated concurrent `telegram_formatting.py` refactor),
+`**Actually complete, verified:** all of the above --
+`pytest tests/ -q` 425 passed at pass time (up from a 419 baseline that
+already included an unrelated concurrent `telegram_formatting.py`
+refactor);
 `npx tsc -b --noEmit` clean, `npm run test` 38 passed (no new frontend
 test infrastructure added -- existing Vitest setup only, per this
 pass's instruction not to build a new test architecture), `npm run
@@ -132,7 +133,7 @@ substitute).
 
 **Explicitly deferred, not done this pass:** Compact vs Expanded
 Cards, Progress Density, Notes Preview, Default Search Fields, Accent
-Color, and Animation Intensity remain disabled placeholders. Each
+Color remain disabled placeholders. Each
 requires a UX/product decision this pass's scope didn't call for
 making unilaterally -- section 5 of this pass's brief explicitly says
 "do not automatically implement all of them," and none of these came
@@ -148,6 +149,7 @@ pass suggested regressions there.
 - `b3150ea` Backend: Visible Fields setting + Phone Handling edge-case tests
 - `c0892fb` Frontend: Visible Fields wiring + honest Queue-setting descriptions
 - `e9d8ec7` Fix false "Telegram Theme: ON" claim (independent bug hunt)
+- `e13974d` Settings > Appearance > Animation Intensity: real, backend-persisted (`animationIntensity` in `GET`/`POST /settings`, validated to `'full'`/`'reduced'`; `App.tsx` applies `data-motion` attribute, `index.css` gates animations on it; 3 new backend tests + 2 updated tests; full suite 428 passed)
 
 ---
 

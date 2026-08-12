@@ -76,6 +76,12 @@ A task is not complete merely because an AI reports completion; verification evi
 
 None recorded as active at the time of this audit.
 
+## Active Work Registry
+
+| Agent/model | Task ID | Status | Scope/files reserved | Started | Commit/PR | Notes |
+|---|---|---|---|---|---|---|
+| opencode/laguna-s-2.1-free | VERIFY-ANIM-INTENSITY-DOC-DRIFT | AWAITING VERIFICATION | PROJECT_STATUS.md (GAP-014, STATE-025), FreikerDialBot_UI_UX_Development_Log.md | 2026-08-12T08:45:00Z | Will commit as fix/VERIFY-anim-intensity-doc-drift | Correct documentation drift: Animation Intensity was listed as disabled/placeholder but is implemented in commit e13974d |
+
 ## Delegation record template
 
 ```text
@@ -257,13 +263,14 @@ The audit covered the canonical documentation, repository tree, frontend structu
 
 ### GAP-014 — Settings functionality
 
-The Settings page still contains deliberately disabled placeholders for Compact vs Expanded Cards, Progress Density, Notes Preview, Default Search Fields, Accent Color, Animation Intensity, and parts of Admin/Diagnostics -- these are not bugs merely because they are disabled; implementing them requires UX/product decisions and should stay with Claude.
+The Settings page still contains deliberately disabled placeholders for Compact vs Expanded Cards, Progress Density, Notes Preview, Default Search Fields, Accent Color, and parts of Admin/Diagnostics -- these are not bugs merely because they are disabled; implementing them requires UX/product decisions and should stay with Claude. (Animation Intensity, previously listed here, is now a real, backend-persisted setting — see below.)
 
 Resolved across UI Pass 5 and this pass ("Post-UI Pass 5" audit, see `FreikerDialBot_UI_UX_Development_Log.md`):
 - Phone Handling (Primary Phone Preference, Quick Number Switching) and Queue > Pre-ready Count -- real, backend-enforced (UI Pass 5).
 - Display > Visible Fields -- real, backend-enforced `visibleFields` setting (`daysOverdue`/`monthlyPayment`/`balance`), drives CustomerCard's now config-driven info grid.
 - Queue > Active Queue vs New Contacts and Resume/Restart Behavior -- traced the architecture and found there is exactly one queue and one server-authoritative session by design (no second/separate mechanism exists to toggle between), so both rows were converted from disabled placeholders to honest, non-toggle descriptions of the real, verified behavior rather than fake two-option toggles.
 - Language -- already correctly implemented pre-pass: English shown as the real active language (it's the only implemented one), Russian/Tajik as honest disabled placeholders, no fake selector.
+- Animation Intensity -- real, backend-persisted setting (`animationIntensity` in `GET/POST /settings`, validated to `'full'`/`'reduced'`, persisted via `database.set_setting("animation_intensity", …)`; defaults to `"full"`). Frontend `App.tsx` applies it as a `data-motion` attribute on `<html>`; `index.css` gates every transition/glow animation (card slide, progress-cell charge flash, nav-tab pop) on it, mirroring the existing `prefers-reduced-motion` behavior for operators who want reduced motion in-app without changing a system-wide setting. Commit `e13974d`.
 
 ### GAP-015 — Pre-ready N-deep customers (RESOLVED)
 
@@ -318,7 +325,7 @@ Re-audited the previous pass's claims against live code rather than trusting the
 - Commands, Search, and Language were re-audited and found already correct -- no changes needed.
 - Test evidence: backend `pytest tests/ -q` went from 419 (pre-pass baseline, after a concurrent `telegram_formatting.py` refactor landed) to 425 passed; frontend stayed at 38 passed (no new frontend test infrastructure added, per this pass's instruction not to expand test architecture); `tsc -b --noEmit`, `npm run build`, and `npx oxlint` all clean throughout.
 - Commits: `b3150ea` (backend: Visible Fields setting + Phone Handling edge-case tests), `c0892fb` (frontend: Visible Fields wiring + honest Queue-setting descriptions), `e9d8ec7` (Telegram Theme claim fix).
-- Deferred, not done this pass: Compact vs Expanded Cards, Progress Density, Notes Preview, Default Search Fields, Accent Color, Animation Intensity remain disabled placeholders -- each requires a UX/product decision this pass's scope didn't call for implementing (section 5 explicitly says "do not automatically implement all of them").
+- Deferred, not done this pass: Compact vs Expanded Cards, Progress Density, Notes Preview, Default Search Fields, Accent Color remain disabled placeholders -- each requires a UX/product decision this pass's scope didn't call for implementing (section 5 explicitly says "do not automatically implement all of them"). (Animation Intensity, previously deferred here, was subsequently implemented as a real, backend-persisted setting in commit `e13974d`.)
 
 ## Findings: security posture
 
@@ -480,6 +487,7 @@ A delegated task is complete only when scope remained bounded, required checks p
 - Repository stabilization/setup/doctor tooling was completed and fresh-clone behavior verified.
 - CORS and denied-admin security fixes were completed and documented.
 - `/import` documented in the API contract (VERIFY-014); read-only xlsx workbook now closed, fixing Windows temp-file cleanup in the Mini App `/import` path; auth-boundary coverage regression test added (VERIFY-015).
+- Appearance > Animation Intensity became a real, backend-enforced setting (`GET`/`POST /settings` `animationIntensity`, validated to `'full'`/`'reduced'`, persisted to `database.set_setting("animation_intensity", …)`; `App.tsx` applies `data-motion` on `<html>`; `index.css` gates all transition/glow animations on it). Commit `e13974d`.
 
 ## Decisions still needed
 
@@ -508,6 +516,7 @@ A delegated task is complete only when scope remained bounded, required checks p
 - Current repository has 18 open Dependabot PRs and no open Issues.
 - Known stale documentation found: UI/UX testing gap, Vitest config comment, and API route/documentation parity around `/queue/resume`.
 - Known stale repository artifacts found: `_security_check.py`, `_install_err.log`.
+- Documentation drift found 2026-08-12: GAP-014 and STATE-025 (and the UI/UX log) listed Animation Intensity as a disabled placeholder; it was implemented as a real, backend-persisted setting in commit `e13974d`. Corrected by `VERIFY-ANIM-INTENSITY-DOC-DRIFT`.
 - New verified delegation candidates added after independent review of an external AI audit: DLG-009, DLG-010, VERIFY-013, VERIFY-014, VERIFY-015.
 - VERIFY-014 (route/documentation parity) and VERIFY-015 (auth-boundary coverage) were verified and completed on 2026-08-10; `POST /import` was added to `ARCHITECTURE.md`, a 19-route auth-boundary regression test was added, and a Windows xlsx temp-file cleanup bug in the `/import` path was fixed.
 - Low-priority future-improvement reservoir added after independent review: FUT-001 through FUT-015.
