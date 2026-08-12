@@ -135,7 +135,12 @@ export interface AppSettings {
   primaryPhonePreference: 'first' | 'second';
   preReadyCount: number;
   visibleFields: VisibleField[];
-  animationIntensity: 'full' | 'reduced';
+  cardDensity: 'compact' | 'expanded';
+  progressDensity: 'low' | 'normal' | 'high';
+  notesPreview: boolean;
+  defaultSearchFields: SearchField[];
+  accentColor: AccentColor;
+  animationIntensity: 'low' | 'normal' | 'high';
 }
 
 /** The fixed, known set of CustomerCard financial fields Settings >
@@ -143,6 +148,17 @@ export interface AppSettings {
  * MiniAppService._VISIBLE_FIELD_IDS on the backend and with
  * FIELD_DEFS in CustomerCard.tsx. */
 export type VisibleField = 'daysOverdue' | 'monthlyPayment' | 'balance';
+
+/** The fixed, known set of search field groups Settings > Search >
+ * Default Search Fields can control. Keep in sync with
+ * MiniAppService._SEARCH_FIELD_IDS and Database.search_customers's
+ * `fields` param on the backend. */
+export type SearchField = 'name' | 'loanNumber' | 'phone';
+
+/** The fixed accent-color palette (design tokens, not a free picker).
+ * Keep in sync with MiniAppService._ACCENT_COLOR_IDS on the backend
+ * and the `[data-accent="..."]` blocks in index.css. */
+export type AccentColor = 'green' | 'blue' | 'amber' | 'purple';
 
 /** Telegram WebApp bridge -- only the subset of the real SDK this app
  * actually uses. See https://core.telegram.org/bots/webapps for the

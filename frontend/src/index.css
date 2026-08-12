@@ -49,8 +49,10 @@
   --accent-blue-text: #06172e;
   --accent-red: #e0555a;
   --accent-amber: #e0b84f;
+  --accent-amber-text: #2a1f06;
   --accent-indigo: #5b6ecf;
   --accent-purple: #8a5cd6;
+  --accent-purple-text: #1f1430;
   --accent-red-text: #2a0607;
 
   /* Text */
@@ -84,6 +86,32 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Settings > Appearance > Accent Color -- a fixed palette (not a free
+   picker, per the brief), applied via a data-accent attribute App.tsx
+   sets on <html> from the real GET/POST /settings value. Each block
+   overrides the exact same --accent-green/-strong/-text variable names
+   every component already references, reusing hex values already
+   defined above (accent-blue/-amber/-purple) rather than inventing new
+   colors -- "green" is the default and needs no override block since
+   :root above already defines it. */
+[data-accent='blue'] {
+  --accent-green: var(--accent-blue);
+  --accent-green-strong: #2f7fe0;
+  --accent-green-text: var(--accent-blue-text);
+}
+
+[data-accent='amber'] {
+  --accent-green: var(--accent-amber);
+  --accent-green-strong: #c99a2e;
+  --accent-green-text: var(--accent-amber-text);
+}
+
+[data-accent='purple'] {
+  --accent-green: var(--accent-purple);
+  --accent-green-strong: #6d3fc0;
+  --accent-green-text: var(--accent-purple-text);
 }
 
 #root {
@@ -335,21 +363,58 @@ p {
   }
 }
 
-/* Settings > Appearance > Animation Intensity -- an explicit in-app
-   toggle (App.tsx sets data-motion on <html>) with the exact same
-   effect as the OS-level prefers-reduced-motion query above, for
-   operators who want reduced motion in this app specifically without
-   changing a system-wide accessibility setting. Written as a flat
-   selector list (not nested CSS) since this build has no CSS-nesting
-   postcss plugin configured. */
-html[data-motion='reduced'] .progress-cell.is-charging,
-html[data-motion='reduced'] .progress-count.is-pulsing,
-html[data-motion='reduced'] .card-jump-out,
-html[data-motion='reduced'] .card-jump-in,
-html[data-motion='reduced'] .drawer-panel,
-html[data-motion='reduced'] .drawer-backdrop,
-html[data-motion='reduced'] .nav-tab.is-active .nav-tab-icon,
-html[data-motion='reduced'] .retro-button {
-  animation: none !important;
-  transition: none !important;
+/* Settings > Appearance > Animation Intensity -- retimes the exact
+   same named animations/transitions above (no new keyframes, no new
+   animated elements, per the brief's "do not create new animations
+   outside existing scope"), via a data-motion attribute App.tsx sets
+   on <html> from the real GET/POST /settings value. "Normal" is the
+   default and needs no override block since the definitions above
+   already are the normal timings. These rules intentionally do not
+   use !important, so prefers-reduced-motion above always wins
+   regardless of this setting -- an operator's OS-level accessibility
+   preference outranks their in-app animation preference. */
+[data-motion='low'] .retro-button {
+  transition-duration: 0.05s;
+}
+[data-motion='low'] .progress-cell.is-charging {
+  animation-duration: 0.35s;
+}
+[data-motion='low'] .progress-count.is-pulsing {
+  animation-duration: 0.3s;
+}
+[data-motion='low'] .card-jump-out,
+[data-motion='low'] .card-jump-in {
+  animation-duration: 0.25s;
+}
+[data-motion='low'] .drawer-panel {
+  animation-duration: 0.15s;
+}
+[data-motion='low'] .drawer-backdrop {
+  animation-duration: 0.1s;
+}
+[data-motion='low'] .nav-tab.is-active .nav-tab-icon {
+  animation-duration: 0.15s;
+}
+
+[data-motion='high'] .retro-button {
+  transition-duration: 0.12s;
+}
+[data-motion='high'] .progress-cell.is-charging {
+  animation-duration: 0.9s;
+}
+[data-motion='high'] .progress-count.is-pulsing {
+  animation-duration: 0.75s;
+}
+[data-motion='high'] .card-jump-out,
+[data-motion='high'] .card-jump-in {
+  animation-duration: 0.6s;
+}
+[data-motion='high'] .drawer-panel {
+  animation-duration: 0.32s;
+}
+[data-motion='high'] .drawer-backdrop {
+  animation-duration: 0.22s;
+}
+[data-motion='high'] .nav-tab.is-active .nav-tab-icon {
+  animation-duration: 0.38s;
 }

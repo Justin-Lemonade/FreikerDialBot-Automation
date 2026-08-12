@@ -50,13 +50,20 @@ const App = () => {
   const timer = useCallTimer();
   const { settings } = useAppSettings();
 
-  // Applies Settings > Appearance > Animation Intensity by toggling a
-  // root-level data attribute that index.css's animation keyframes key
-  // off of -- one real setting controlling every transition/glow
-  // animation at once (card slide, progress-cell "charge" flash,
-  // nav-tab pop), not a fake per-animation toggle list.
+  // Settings > Appearance > Accent Color / Animation Intensity: applied
+  // as data attributes on the document root, which index.css reads to
+  // override the relevant CSS custom properties/animation-durations.
+  // A plain side effect (not prop drilling) since every themed
+  // element in the app inherits from the root regardless of which
+  // component tree it's in -- the same reason prefers-reduced-motion
+  // is handled with a root-level media query rather than a prop
+  // threaded through every animated component.
   useEffect(() => {
-    document.documentElement.setAttribute('data-motion', settings.animationIntensity);
+    document.documentElement.dataset.accent = settings.accentColor;
+  }, [settings.accentColor]);
+
+  useEffect(() => {
+    document.documentElement.dataset.motion = settings.animationIntensity;
   }, [settings.animationIntensity]);
 
   // Poll every 5s so the progress bar / current customer stay live even
@@ -301,6 +308,8 @@ const App = () => {
           activePhone={activePhone}
           onSelectPhone={setSelectedPhone}
           visibleFields={settings.visibleFields}
+          cardDensity={settings.cardDensity}
+          notesPreview={settings.notesPreview}
           upcomingPreview={upcomingPreview}
           onOpenDetail={() => {
             if (!currentCustomer) return;
@@ -364,6 +373,7 @@ const App = () => {
       lastSyncedAt={lastSyncedAt}
       bannerError={actionError}
       onDismissError={() => setActionError(null)}
+      progressDensity={settings.progressDensity}
     >
       {renderScreen()}
     </MainLayout>

@@ -28,6 +28,11 @@ interface Props {
   /** Settings > Display > Visible Fields -- which financial fields
    * CustomerCard's info grid shows. */
   visibleFields?: VisibleField[];
+  /** Settings > Display > Compact vs Expanded Cards. */
+  cardDensity?: 'compact' | 'expanded';
+  /** Settings > Display > Notes Preview -- show a truncated preview of
+   * the latest note on the calling card. */
+  notesPreview?: boolean;
   /** Settings > Queue > Pre-ready Count -- up to that many customers
    * after the current one, fetched via useUpcomingQueue. Empty when the
    * setting is "None" (0). Preview only: tapping nothing here changes
@@ -59,6 +64,8 @@ export const Home = ({
   activePhone,
   onSelectPhone,
   visibleFields,
+  cardDensity,
+  notesPreview,
   upcomingPreview,
 }: Props) => {
   const [isLeaving, setIsLeaving] = useState(false);
@@ -96,6 +103,8 @@ export const Home = ({
         activePhone={activePhone}
         onSelectPhone={onSelectPhone}
         visibleFields={visibleFields}
+        cardDensity={cardDensity}
+        notesPreview={notesPreview}
       />
 
       {hasPendingAdvance ? (
