@@ -50,6 +50,13 @@
      of the selected accent (found during UI Pass 8's accent-color
      audit -- see MainLayout.tsx's nav-tab background). */
   --accent-green-glow: rgba(111, 224, 138, 0.12);
+  /* Stronger wash for large text-shadow glows (e.g. the Landing logo)
+     that need more opacity than the nav-tab wash above but must still
+     follow the selected accent instead of staying hardcoded green --
+     same reasoning as -glow, added after finding one more inline
+     rgba(111, 224, 138, ...) literal (Landing.tsx's logo text-shadow)
+     that Pass 8's repo-wide grep for hardcoded accent literals missed. */
+  --accent-glow-strong: rgba(111, 224, 138, 0.3);
 
   /* Secondary action states */
   --accent-blue: #4f9dff;
@@ -108,6 +115,7 @@
   --accent-green-strong: #2f7fe0;
   --accent-green-text: var(--accent-blue-text);
   --accent-green-glow: rgba(79, 157, 255, 0.12);
+  --accent-glow-strong: rgba(79, 157, 255, 0.3);
 }
 
 [data-accent='amber'] {
@@ -115,6 +123,7 @@
   --accent-green-strong: #c99a2e;
   --accent-green-text: var(--accent-amber-text);
   --accent-green-glow: rgba(224, 184, 79, 0.12);
+  --accent-glow-strong: rgba(224, 184, 79, 0.3);
 }
 
 [data-accent='purple'] {
@@ -122,6 +131,7 @@
   --accent-green-strong: #6d3fc0;
   --accent-green-text: var(--accent-purple-text);
   --accent-green-glow: rgba(138, 92, 214, 0.12);
+  --accent-glow-strong: rgba(138, 92, 214, 0.3);
 }
 
 #root {

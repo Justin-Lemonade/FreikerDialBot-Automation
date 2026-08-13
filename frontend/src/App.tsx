@@ -97,7 +97,14 @@ const App = () => {
   // workflow, so completing shouldn't yank someone away from it the
   // way it does from the live 'calling' screen.
   useEffect(() => {
-    const exemptScreens: Screen[] = ['home', 'complete', 'statistics', 'commands', 'search', 'customerDetail'];
+    // 'upload' is exempt for the same reason 'home' etc. are: it's an
+    // out-of-band action reachable from Landing regardless of queue
+    // state (an operator who just finished the queue is exactly who
+    // wants to upload more customers next). Without this, the 5s
+    // session poll would detect session.completed still true and yank
+    // the operator to the completion screen mid-upload on every poll
+    // tick, since nothing about visiting Upload changes session state.
+    const exemptScreens: Screen[] = ['home', 'complete', 'statistics', 'commands', 'search', 'customerDetail', 'upload'];
     if (session?.completed && !exemptScreens.includes(screen)) {
       setScreen('complete');
     }
