@@ -74,7 +74,7 @@ A task is not complete merely because an AI reports completion; verification evi
 
 ## Active delegations
 
-None currently in progress by this session. One note for coordination: a concurrent branch `fix/VERIFY-anim-intensity-doc-drift` (task `VERIFY-ANIM-INTENSITY-DOC-DRIFT`, not yet merged to `main` as of this entry) was written against commit `e13974d`'s `animationIntensity: 'full' | 'reduced'` scheme. That scheme was superseded on `main` in commits `9bcdf9e`/`bc0d632` (this session, "UI Pass 7") with `animationIntensity: 'low' | 'normal' | 'high'`, per this pass's explicit brief. If that branch is merged after this entry, its documentation changes will describe a value scheme that no longer exists in the code -- re-verify against live code (`mini_app_api.py`'s `_get_settings`/`update_settings`, `frontend/src/types.ts`) before trusting or merging it, per this file's own Source-of-truth rule above.
+None currently in progress by this session. One long-standing coordination note: a concurrent branch `fix/VERIFY-anim-intensity-doc-drift` (task `VERIFY-ANIM-INTENSITY-DOC-DRIFT`) still exists unmerged on origin as of `main` HEAD `c547f3d` (confirmed via `git ls-remote`). It was originally written against commit `e13974d`'s `animationIntensity: 'full' | 'reduced'` scheme, superseded on `main` back in "UI Pass 7" (commits `9bcdf9e`/`bc0d632`) with `animationIntensity: 'low' | 'normal' | 'high'` -- still the live scheme today, reconfirmed during Pass 10 (`mini_app_api.py`'s `get_settings`/`update_settings`, `frontend/src/types.ts`). Three passes (8, 9, 10) have landed on `main` since this note was first written without that branch being merged or closed. If it is ever merged, its documentation changes will describe a value scheme that no longer exists in the code -- re-verify against live code before trusting or merging it, per this file's own Source-of-truth rule above.
 
 ## Delegation record template
 
@@ -532,20 +532,22 @@ A delegated task is complete only when scope remained bounded, required checks p
 1. DLG-005 through DLG-010 (small cleanup/documentation) — completed.
 2. VERIFY-009/010 (Dependabot PR triage) — completed. All 18 branches are stale; none should be merged without a Dependabot rebase.
 3. VERIFY-013 through VERIFY-015 (bounded audits) — completed.
-4. Have Claude perform the dedicated responsive UI audit and decide the next Settings/UI pass.
+4. UI Pass 9 (frontend state/navigation audit) and Pass 10 (backend/frontend contract + async-race audit) — completed; see STATE-027/STATE-028 above.
 5. Keep product decisions above out of the smaller-model queue until explicitly resolved.
 6. Treat FUT-001 through FUT-015 as a low-priority improvement reservoir, not active work, unless a trigger makes one relevant.
-7. After the next Claude pass, run a fresh repository-wide delegation audit and reconcile this file against the new HEAD.
+7. Decide the next integrity-audit focus area (candidates: importer/AI-parser edge cases, statistics-engine accuracy under real data volume, mobile layout/touch-target audit) or resolve the stale `fix/VERIFY-anim-intensity-doc-drift` branch; run a fresh repository-wide delegation audit after either.
 
 ## Delegation audit metadata
 
-- Audit date: 2026-08-09
-- Audited HEAD: `9f89cf9619f8d454268a3e18a88a2cdca5a5b313`
+- Audit date: 2026-08-13 (updated; original delegation audit was 2026-08-09)
+- Audited HEAD: `c547f3dda8c3c8a722bdee08242d035728b98ca8`
 - Last control-center template update: 2026-08-09
-- Current repository has 18 open Dependabot PRs and no open Issues.
-- Known stale documentation found: UI/UX testing gap, Vitest config comment, and API route/documentation parity around `/queue/resume`.
-- Known stale repository artifacts found: `_security_check.py`, `_install_err.log`.
-- New verified delegation candidates added after independent review of an external AI audit: DLG-009, DLG-010, VERIFY-013, VERIFY-014, VERIFY-015.
-- VERIFY-014 (route/documentation parity) and VERIFY-015 (auth-boundary coverage) were verified and completed on 2026-08-10; `POST /import` was added to `ARCHITECTURE.md`, a 19-route auth-boundary regression test was added, and a Windows xlsx temp-file cleanup bug in the `/import` path was fixed.
+- Backend tests: 446 passing. Frontend tests: 38 passing. Typecheck/build/lint: clean.
+- Dependabot PR count and stale-branch triage last confirmed 2026-08-10 (VERIFY-009/010); not re-checked this pass -- re-verify PR count before acting on it if it becomes relevant again.
+- Known stale repository artifacts found (2026-08-09 audit): `_security_check.py`, `_install_err.log` -- both removed (DLG-005/DLG-006, completed).
+- New verified delegation candidates added after independent review of an external AI audit: DLG-009, DLG-010, VERIFY-013, VERIFY-014, VERIFY-015 -- all completed.
 - Low-priority future-improvement reservoir added after independent review: FUT-001 through FUT-015.
+- UI Pass 8 (2026-08-12): fixed duplicated `useAppSettings` state and blacklisted-number tap-to-dial; see STATE-026.
+- UI Pass 9 (2026-08-13): fixed Upload-screen navigation kickout and a second hardcoded accent-glow literal; see STATE-027.
+- Pass 10 (2026-08-13): fixed a session-poll race condition and a `customerId` int/string contract mismatch; see STATE-028.
 - Next full audit trigger: after the next substantial Claude pass, dependency migration, or architecture change.
