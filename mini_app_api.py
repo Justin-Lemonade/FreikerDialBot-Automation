@@ -181,7 +181,7 @@ class MiniAppService:
         self.session_manager.start_current_session()
         self.database.update_queue_session(current_customer_id=customer_id)
         self.statistics.record_event("queue_started", session_id=self.session_manager.current_session()["id"] if self.session_manager.current_session() else None, customer=self.database.get_customer(customer_id))
-        return {"ok": True, "customerId": customer_id, "startedAt": datetime.now(timezone.utc).isoformat()}
+        return {"ok": True, "customerId": str(customer_id), "startedAt": datetime.now(timezone.utc).isoformat()}
 
     def submit_call_result(
         self,
@@ -217,7 +217,7 @@ class MiniAppService:
         session_payload = self.get_current_session()
         return {
             "ok": True,
-            "customerId": customer_id,
+            "customerId": str(customer_id),
             "outcome": outcome,
             "status": status,
             "duration": duration,
@@ -234,7 +234,7 @@ class MiniAppService:
             customer=self.database.get_customer(int(customer_id)),
             notes=note.strip(),
         )
-        return {"ok": True, "customerId": customer_id, "note": note.strip()}
+        return {"ok": True, "customerId": str(customer_id), "note": note.strip()}
 
     def next_customer(self) -> dict[str, Any]:
         selection = self.queue_engine.next_customer()
