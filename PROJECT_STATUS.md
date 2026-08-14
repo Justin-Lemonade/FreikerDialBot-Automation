@@ -357,6 +357,19 @@ Scope for this pass shifted from frontend state/navigation (Pass 9) to backend�
 - Verification: `pytest tests/ -q` -- 446 passed. `cd frontend && npx tsc -b --noEmit && npm run test && npm run build && npx oxlint` -- clean; 38 tests passed.
 - Commit: see `git log` for this pass's SHA (pushed and independently verified via GitHub API per `AGENTS.md`).
 
+### STATE-029 — Pass 11: import-pipeline duplicate/flagged-row accounting audit (2026-08-13)
+
+Scope for this pass moved to the import pipeline (`importer.py`/`database.insert_customers`), an area untouched by Passes 8-10 that handles untrusted external input (pasted JSON, AI-parsed text/images, xlsx uploads) and feeds directly into operator-facing Telegram messages. Baseline reconfirmed unchanged before any edit (fresh clone at `2478145`): 446 backend tests, 38 frontend tests, clean typecheck/build/lint. One root cause, three linked, verified operator-facing bugs found and fixed, all reproduced with standalone scripts before touching any code:
+
+- **`imported_count` could go negative and render that way in the Telegram "Import complete" message.** `_process_customers` computed `result.imported_count = inserted - flagged_count`, silently assuming every flagged row was among the rows `insert_customers` actually stored. `database.insert_customers` skips (doesn't store) a pre-existing loan_number if its status is still `'waiting'` (an unworked duplicate from an earlier import) -- per its own docstring. A flagged row (missing a required field) that also happened to be such a duplicate got skipped, but `flagged_count` still counted it, so the subtraction went negative. Reproduced: import a valid `L1`, then re-import `L1` missing `last_name` -> `imported_count == -1`, rendered verbatim by `telegram_formatting.render_import_result` as "Customers imported: -1" (and separately exposed as `mini_app_api.py`'s `importedCount`).
+- **The round-trip verification warning said "already existed and was skipped" for customers that were actually refreshed and requeued, not skipped.** Same root cause: `_process_customers` treated every pre-existing loan_number match as "skipped," but `insert_customers` only skips the still-`'waiting'` case -- a loan_number already worked in a *prior* session is refreshed and requeued instead (explicitly documented, explicitly allowed, already covered by its own same-day `warning_note` and test). Reproduced: import `L1`, mark it `"warned"` (worked), re-import `L1` -> `imported_count == 1` (correctly showing it was requeued) sitting right next to a `verification_warnings` entry claiming it was skipped, in the same Telegram message -- a direct, visible self-contradiction.
+- **`flagged_count` overcounted rows that never reached the queue**, contradicting the UI copy's own promise ("N record(s) ... They appear in the queue — Skip or Delete them there.") whenever a flagged row was also a skipped duplicate.
+- **Fix:** `_process_customers` now looks up each pre-existing loan_number's `status` (not just its existence) before insert, and only treats a `'waiting'` match as genuinely skipped. `imported_count` and `flagged_count` are now both derived from which flagged rows were actually stored (`flagged_stored`), not the raw per-batch flagged tally. The now-dead `flagged_count` loop variable was removed. Two regression tests added (`test_flagged_row_that_is_also_a_waiting_duplicate_does_not_go_negative`, `test_cross_session_duplicate_is_not_reported_as_skipped`) covering exactly the two reproduced scenarios.
+- Investigated and deliberately NOT touched: `SessionManager.create_session(len(all_rows))` / `SessionSummary.imported` (shown as "Imported" on the session-completion screen) also uses the raw batch size rather than a net-new-insert count. Traced its actual semantics: the live in-session progress display (`QueueEngine._progress`'s `total_customers`, what `mini_app_api.py`'s `customerCount` actually serves) is computed dynamically from real DB status counts and is unaffected by this issue. `SessionSummary.imported` is a different, static, post-completion metric whose intended meaning ("customers newly written this batch" vs. "queue size worked through this session, including refreshed duplicates") is ambiguous from the code alone and plausibly correct as-is -- a product-semantics question for Justin, not a demonstrated bug like the two above, so left unchanged.
+- Also reconfirmed (not touched, not re-litigated): the intra-batch duplicate-loan-number gap (`test_duplicate_loan_number_within_same_batch_is_silently_dropped`) is a separate, already-documented, already-deliberately-deferred issue with its own test and rationale -- unrelated root cause (same-batch dict overwrite before `insert_customers` is ever called, not the pre-insert skip/refresh classification this pass fixed).
+- Verification: `pytest tests/ -q` -- 448 passed (446 baseline + 2 new regression tests). Frontend untouched this pass; not re-run beyond the initial baseline check.
+- Commit: see `git log` for this pass's SHA (pushed and independently verified via GitHub API per `AGENTS.md`).
+
 ## Findings: security posture
 
 The security audit remains substantially resolved: Mini App Telegram auth, shared admin authorization, admin-gated export, restricted CORS, and denied-admin audit logging are implemented. The security document still correctly identifies three ongoing controls: new routes must join the auth boundary, the anonymous development escape hatch must never be enabled outside local testing, and future route growth must be checked for auth/authorization drift.
@@ -532,17 +545,17 @@ A delegated task is complete only when scope remained bounded, required checks p
 1. DLG-005 through DLG-010 (small cleanup/documentation) — completed.
 2. VERIFY-009/010 (Dependabot PR triage) — completed. All 18 branches are stale; none should be merged without a Dependabot rebase.
 3. VERIFY-013 through VERIFY-015 (bounded audits) — completed.
-4. UI Pass 9 (frontend state/navigation audit) and Pass 10 (backend/frontend contract + async-race audit) — completed; see STATE-027/STATE-028 above.
-5. Keep product decisions above out of the smaller-model queue until explicitly resolved.
+4. UI Pass 9, Pass 10, and Pass 11 (frontend navigation, backend/frontend contract + async races, import-pipeline duplicate/flagged-row accounting) — completed; see STATE-027/STATE-028/STATE-029 above.
+5. Keep product decisions above out of the smaller-model queue until explicitly resolved. This now includes `SessionSummary.imported`'s intended meaning (raised, not resolved, in Pass 11 -- see STATE-029).
 6. Treat FUT-001 through FUT-015 as a low-priority improvement reservoir, not active work, unless a trigger makes one relevant.
-7. Decide the next integrity-audit focus area (candidates: importer/AI-parser edge cases, statistics-engine accuracy under real data volume, mobile layout/touch-target audit) or resolve the stale `fix/VERIFY-anim-intensity-doc-drift` branch; run a fresh repository-wide delegation audit after either.
+7. Decide the next integrity-audit focus area (candidates: AI-parser edge cases specifically -- ai_parser.py wasn't touched this pass, only importer.py's duplicate/flagged-row accounting -- statistics-engine accuracy under real data volume, mobile layout/touch-target audit) or resolve the stale `fix/VERIFY-anim-intensity-doc-drift` branch; run a fresh repository-wide delegation audit after either.
 
 ## Delegation audit metadata
 
 - Audit date: 2026-08-13 (updated; original delegation audit was 2026-08-09)
-- Audited HEAD: `c547f3dda8c3c8a722bdee08242d035728b98ca8`
+- Audited HEAD before this pass's commit: `2478145` (this pass's own commit SHA — see `git log` for current HEAD)
 - Last control-center template update: 2026-08-09
-- Backend tests: 446 passing. Frontend tests: 38 passing. Typecheck/build/lint: clean.
+- Backend tests: 448 passing (446 + 2 new regression tests from Pass 11). Frontend tests: 38 passing. Typecheck/build/lint: clean.
 - Dependabot PR count and stale-branch triage last confirmed 2026-08-10 (VERIFY-009/010); not re-checked this pass -- re-verify PR count before acting on it if it becomes relevant again.
 - Known stale repository artifacts found (2026-08-09 audit): `_security_check.py`, `_install_err.log` -- both removed (DLG-005/DLG-006, completed).
 - New verified delegation candidates added after independent review of an external AI audit: DLG-009, DLG-010, VERIFY-013, VERIFY-014, VERIFY-015 -- all completed.
@@ -550,4 +563,5 @@ A delegated task is complete only when scope remained bounded, required checks p
 - UI Pass 8 (2026-08-12): fixed duplicated `useAppSettings` state and blacklisted-number tap-to-dial; see STATE-026.
 - UI Pass 9 (2026-08-13): fixed Upload-screen navigation kickout and a second hardcoded accent-glow literal; see STATE-027.
 - Pass 10 (2026-08-13): fixed a session-poll race condition and a `customerId` int/string contract mismatch; see STATE-028.
+- Pass 11 (2026-08-13): fixed a negative-`imported_count` bug and a contradictory "already existed and was skipped" warning in the import pipeline; see STATE-029.
 - Next full audit trigger: after the next substantial Claude pass, dependency migration, or architecture change.

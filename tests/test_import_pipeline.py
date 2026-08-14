@@ -216,6 +216,52 @@ class TestDataEdgeCases:
         assert database.count_customers() == 1  # not duplicated
 
     @pytest.mark.asyncio
+    async def test_flagged_row_that_is_also_a_waiting_duplicate_does_not_go_negative(self, importer, database):
+        """REGRESSION: a row that is BOTH flagged (missing a required field)
+        AND a still-waiting duplicate from a prior import used to produce
+        imported_count == -1 (inserted=0 for the skipped duplicate, minus
+        flagged_count=1 counted regardless of whether it was ever stored).
+        A negative "Customers imported" count would render straight into
+        the operator-facing Telegram message. Now: the row is genuinely
+        skipped (never stored), so it contributes to neither imported_count
+        nor flagged_count, and the warning correctly says "skipped"."""
+        first_text = json.dumps([{"loan_number": "L1", "first_name": "Ann", "last_name": "Owens",
+                                   "phone_numbers": ["5551234567"]}])
+        await importer.import_text(first_text)  # L1 inserted, status stays 'waiting'
+
+        second_text = json.dumps([{"loan_number": "L1", "first_name": "Ann", "last_name": "",
+                                    "phone_numbers": ["5551234567"]}])  # missing last_name -> flagged
+        second = await importer.import_text(second_text)
+
+        assert second.imported_count == 0  # not -1
+        assert second.flagged_count == 0  # flagged but never stored -> doesn't claim to be in the queue
+        assert any("already existed and was skipped" in w for w in second.verification_warnings)
+
+    @pytest.mark.asyncio
+    async def test_cross_session_duplicate_is_not_reported_as_skipped(self, importer, database, session_manager):
+        """REGRESSION: re-importing a customer already worked in a PRIOR
+        session refreshes and requeues them (see database.insert_customers'
+        docstring) -- it does not skip them. The round-trip verification
+        warning used to say "already existed and was skipped" for this case
+        too, directly contradicting imported_count==1 in the very same
+        Telegram message. A requeued customer should get no such warning;
+        same-day contact is already covered separately by the customer
+        record's own warning_note (see test_cross_session_duplicate_*)."""
+        from queue_engine import QueueEngine
+
+        text = json.dumps([{"loan_number": "L1", "first_name": "Ann", "last_name": "Owens",
+                             "phone_numbers": ["5551234567"]}])
+        await importer.import_text(text)
+
+        queue = QueueEngine(database, statistics=StatisticsEngine(database), session_manager=session_manager)
+        selection = queue.next_customer()
+        queue.apply_action(selection.customer["id"], "warned")  # worked, no longer 'waiting'
+
+        second = await importer.import_text(text)
+        assert second.imported_count == 1  # refreshed/requeued, not skipped
+        assert second.verification_warnings == []  # must not claim it was skipped
+
+    @pytest.mark.asyncio
     async def test_duplicate_loan_number_within_same_batch_is_silently_dropped(self, importer, database):
         """KNOWN GAP: if the SAME batch contains the same loan_number twice,
         validate_customers silently drops the second occurrence with no
