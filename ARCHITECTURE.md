@@ -62,6 +62,7 @@ The Mini App API exposes the same backend state to the web UI.
 - `MINI_APP_ALLOW_ANONYMOUS=1` is a development-only escape hatch and should stay off outside local testing.
 - Real API routes are listed in `_API_PATHS`; `/` and static assets stay open so the frontend can load before it has credentials.
 - `mini_app_api.py` also accepts `/api/*` as an alias for the same route set.
+- At the transport layer, `start_mini_app.py` applies `oauth.yml` (ngrok OAuth traffic policy, provider `google`) to the tunnel by default via `--traffic-policy-file`, so visitors must pass provider OAuth before any request reaches the API. `NGROK_TRAFFIC_POLICY_FILE=none` disables the gate.
 
 ### Current route groups
 

@@ -134,11 +134,30 @@ def launch_mini_app_stack(
             # check the return code directly, but a bare `ngrok kill`
             # without shell=True on Windows might fail. It's best to run
             # it with shell=True for broadest compatibility.
-            subprocess.run(["ngrok", "kill"], capture_output=True, text=True, check=False)
+            result = subprocess.run(["ngrok", "kill"], capture_output=True, text=True, check=False)
         except FileNotFoundError:
             # This is already guarded by ngrok_available, but as a defense-in-depth,
             # we'll catch it here too, to prevent crashing the launcher.
+            result = None
             _log("ngrok", "Error: ngrok binary not found during kill attempt.")
+        if result is None or result.returncode != 0:
+            # Newer ngrok builds (e.g. 3.39.x msix) removed the `kill`
+            # subcommand -- `ngrok kill` just prints help and exits
+            # non-zero, leaving stale tunnels online. A stale tunnel is
+            # dangerous here because it keeps serving the old,
+            # unprotected endpoint while the new one fails to bind
+            # (ERR_NGROK_334). Fall back to stopping ngrok agents
+            # directly so a restart always ends up on the gated tunnel.
+            _log(
+                "ngrok",
+                "`ngrok kill` unsupported or no tunnels to kill; stopping lingering ngrok agents...",
+            )
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/IM", "ngrok.exe", "/F"], capture_output=True, text=True, check=False
+                )
+            else:
+                subprocess.run(["pkill", "-f", "ngrok"], capture_output=True, text=True, check=False)
         _log("ngrok", "Existing ngrok tunnels killed (if any).")
     else:
         _log(
@@ -199,10 +218,30 @@ def launch_mini_app_stack(
     ngrok_proc = None
     if ngrok_available:
         _log("ngrok", "Starting ngrok tunnel to http://localhost:8000 ...")
-        ngrok_proc = _start_process(
-            ["ngrok", "http", "8000", "--log=stdout"],
-            "ngrok",
-        )
+        ngrok_cmd = ["ngrok", "http", "8000", "--log=stdout"]
+        # Edge authentication: apply the OAuth traffic policy (oauth.yml)
+        # by default so the tunnel is not publicly open. Set
+        # NGROK_TRAFFIC_POLICY_FILE=none to disable, or point it at a
+        # different policy file. A missing file degrades gracefully but is
+        # logged loudly, because it means the tunnel is unauthenticated.
+        traffic_policy_file = os.environ.get("NGROK_TRAFFIC_POLICY_FILE", "oauth.yml")
+        if traffic_policy_file.lower() == "none":
+            _log(
+                "ngrok",
+                "WARNING: NGROK_TRAFFIC_POLICY_FILE=none -- tunnel is NOT edge-authenticated",
+            )
+        else:
+            policy_path = (base_dir / traffic_policy_file).resolve()
+            if policy_path.is_file():
+                ngrok_cmd += ["--traffic-policy-file", str(policy_path)]
+                _log("ngrok", f"Applying traffic policy {policy_path.name} (OAuth gate)")
+            else:
+                _log(
+                    "ngrok",
+                    f"WARNING: traffic policy file {policy_path.name} not found -- "
+                    "tunnel is NOT edge-authenticated",
+                )
+        ngrok_proc = _start_process(ngrok_cmd, "ngrok")
         try:
             mini_app_url = _wait_for_ngrok()
         except RuntimeError as e:

@@ -488,6 +488,7 @@ A delegated task is complete only when scope remained bounded, required checks p
 - CORS and denied-admin security fixes were completed and documented.
 - `/import` documented in the API contract (VERIFY-014); read-only xlsx workbook now closed, fixing Windows temp-file cleanup in the Mini App `/import` path; auth-boundary coverage regression test added (VERIFY-015).
 - Appearance > Animation Intensity became a real, backend-enforced setting (`GET`/`POST /settings` `animationIntensity`, validated to `'full'`/`'reduced'`, persisted to `database.set_setting("animation_intensity", …)`; `App.tsx` applies `data-motion` on `<html>`; `index.css` gates all transition/glow animations on it). Commit `e13974d`.
+- ngrok edge OAuth gate added: `start_mini_app.py` now applies `oauth.yml` (Google OAuth traffic policy) to the tunnel by default via `--traffic-policy-file`, with `NGROK_TRAFFIC_POLICY_FILE=none` as opt-out; launcher also stops lingering ngrok agents (newer builds removed `ngrok kill`) so stale tunnels cannot survive restarts; docs updated (SECURITY_AUDIT_REPORT, ARCHITECTURE, README, `.env.example`). Verified live: an unauthenticated visitor now gets `302` to ngrok's OAuth login instead of the app.
 
 ## Decisions still needed
 

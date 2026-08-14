@@ -48,12 +48,14 @@ The project handles customer data, call outcomes, notes, history, and exports. I
 - `MINI_APP_ALLOW_ANONYMOUS=1` is a development-only escape hatch for local browser testing.
 - `/` and static assets remain reachable without auth so the frontend can load before it has credentials.
 - The Mini App API also accepts `/api/*` as an alias for the same route set.
+- **The public ngrok tunnel is OAuth-gated at the edge by default.** `start_mini_app.py` applies `oauth.yml` (traffic policy, provider `google`) via `--traffic-policy-file`, so visitors must complete provider OAuth before any request reaches the backend. `NGROK_TRAFFIC_POLICY_FILE=none` disables it; a missing policy file produces a loud warning. The launcher also stops lingering ngrok agents first (some newer ngrok builds removed `ngrok kill`), so a stale, unprotected tunnel cannot survive a restart and keep serving the old URL. This is a transport-layer gate layered in front of the existing Telegram `initData` app auth.
 
 ## Open security items
 
 - [ ] **Any route added later must be added to the auth gate list at the same time.** `_API_PATHS` is now a security boundary and needs maintenance discipline.
 - [ ] **The anonymous dev escape hatch is easy to misconfigure.** It is intentionally off by default, but it should never be enabled outside local testing.
 - [ ] **Future route growth may create policy drift.** New endpoints must be checked against both auth and authorization expectations before release.
+- [ ] **The ngrok OAuth gate has no email allowlist yet.** Any Google account passes the edge gate; restrict to the operator team's domain in `oauth.yml` before sharing the URL more broadly. Also verify the chosen provider is available on the ngrok plan in use.
 
 ## Things that are resolved and should stay resolved
 
@@ -73,6 +75,7 @@ The project handles customer data, call outcomes, notes, history, and exports. I
 4. Confirm no runtime data or generated artifacts are staged for commit.
 5. Confirm no sensitive customer material is being reintroduced into source control.
 6. Confirm any new deployment origin (a new domain, a new ngrok URL format, etc.) is added to `mini_app_allowed_origins` or `MINI_APP_EXTRA_ALLOWED_ORIGINS`.
+7. Confirm the ngrok OAuth gate is still active on the tunnel (`oauth.yml` applied, not `NGROK_TRAFFIC_POLICY_FILE=none`) and that the email allowlist, if enabled, matches the operator team.
 
 ## Notes for future passes
 

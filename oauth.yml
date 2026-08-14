@@ -1,0 +1,21 @@
+# ngrok Traffic Policy: require OAuth before any request reaches the Mini App.
+# start_mini_app.py applies it automatically with
+#   ngrok http 8000 --traffic-policy-file oauth.yml
+# Owner can disable with NGROK_TRAFFIC_POLICY_FILE=none (see .env.example).
+# Reference: https://ngrok.com/docs/traffic-policy/actions/oauth/
+on_http_request:
+  - actions:
+      - type: oauth
+        config:
+          provider: google    # change to github, microsoft, etc.
+          # auth_id: "my-login"   # optional cookie/URL namespace
+          # client_id: ""     # only if you bring your own OAuth
+          # client_secret: "" # only if you bring your own OAuth
+
+# Restrict to specific emails (uncomment and fill in before sharing the URL):
+#   - expressions:
+#       - "!(actions.ngrok.oauth.identity.email in ['alice@example.com'])"
+#     actions:
+#       - type: deny
+#         config:
+#           status_code: 403
