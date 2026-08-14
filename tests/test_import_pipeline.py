@@ -914,6 +914,55 @@ class TestXlsxImport:
         assert requeued["warning_note"] is None
 
     @pytest.mark.asyncio
+    async def test_refresh_does_not_wipe_fields_the_new_import_omitted(self, importer, database, session_manager):
+        """REGRESSION: a customer already worked in a prior session gets
+        refreshed/requeued on re-import (see the tests above) -- but that
+        refresh used to overwrite balance/days_overdue/monthly_payment/
+        first_name/last_name/phone_numbers unconditionally, including with
+        blanks, whenever the new import's source simply didn't capture
+        those fields (e.g. a name/phone-only screenshot re-scan). That
+        silently destroyed previously known, real customer data. Now:
+        a field is only overwritten if the new import actually provided a
+        non-empty value for it; otherwise the existing value is kept."""
+        from queue_engine import QueueEngine
+
+        first_text = json.dumps([{
+            "loan_number": "L1", "first_name": "Ann", "last_name": "Owens",
+            "phone_numbers": ["5551234567"], "balance": "$5,000.00",
+            "days_overdue": "45", "monthly_payment": "$250.00",
+        }])
+        await importer.import_text(first_text)
+
+        queue = QueueEngine(database, statistics=StatisticsEngine(database), session_manager=session_manager)
+        selection = queue.next_customer()
+        customer_id = selection.customer["id"]
+        queue.apply_action(customer_id, "warned")  # worked -> eligible for refresh on re-import
+
+        # Re-import with only name/phone -- no financial fields at all.
+        second_text = json.dumps([{
+            "loan_number": "L1", "first_name": "Ann", "last_name": "Owens",
+            "phone_numbers": ["5551234567"],
+        }])
+        second = await importer.import_text(second_text)
+        assert second.imported_count == 1  # still refreshed/requeued
+
+        refreshed = database.get_customer(customer_id)
+        assert refreshed["balance"] == "5000.00"  # preserved, not wiped to ""
+        assert refreshed["days_overdue"] == "45"
+        assert refreshed["monthly_payment"] == "250.00"
+
+        # A genuinely NEW, non-empty value should still take effect.
+        third_text = json.dumps([{
+            "loan_number": "L1", "first_name": "Ann", "last_name": "Owens",
+            "phone_numbers": ["5551234567"], "balance": "$3,200.00",
+        }])
+        queue.apply_action(customer_id, "warned")  # work it again so it's eligible for another refresh
+        await importer.import_text(third_text)
+        updated = database.get_customer(customer_id)
+        assert updated["balance"] == "3200.00"  # explicitly provided -> overwritten
+        assert updated["days_overdue"] == "45"  # still omitted -> still preserved
+
+    @pytest.mark.asyncio
     async def test_needs_review_customer_shows_skip_and_delete_buttons(self, importer, database, session_manager):
         """A flagged (needs_review) customer should reach the queue with
         Skip/Delete buttons instead of Call/Didn't Answer/Message Received

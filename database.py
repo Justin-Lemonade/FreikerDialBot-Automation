@@ -259,7 +259,10 @@ class Database:
                 issue_note = customer.get("_issue")
                 phone_json = json.dumps(customer["phone_numbers"], ensure_ascii=False)
                 existing = conn.execute(
-                    "SELECT status, status_timestamp FROM customers WHERE loan_number = ?",
+                    "SELECT status, status_timestamp, first_name, last_name, phone_numbers, "
+                    "balance, days_overdue, "
+                    + ", ".join(EXTENDED_CUSTOMER_FIELDS)
+                    + " FROM customers WHERE loan_number = ?",
                     (customer["loan_number"],),
                 ).fetchone()
 
@@ -299,7 +302,26 @@ class Database:
                     continue
 
                 # Already worked in a prior session -- allowed to be
-                # re-queued for a new one.
+                # re-queued for a new one. Every field below is coalesced
+                # (new value if the new import actually provided one,
+                # otherwise the existing value) instead of overwritten
+                # outright: a re-import whose source only captured a
+                # subset of fields (e.g. a name/phone-only screenshot
+                # AI-parse, or a lighter-weight spreadsheet) must not
+                # silently wipe out previously known balance/overdue/etc.
+                # data just because this particular import omitted it.
+                # Confirmed reproducible before this fix: re-importing a
+                # customer with no balance field zeroed out a real,
+                # previously recorded balance.
+                first_name = customer["first_name"] or existing["first_name"]
+                last_name = customer["last_name"] or existing["last_name"]
+                phone_json = phone_json if customer["phone_numbers"] else existing["phone_numbers"]
+                balance = customer.get("balance") or existing["balance"]
+                days_overdue = customer.get("days_overdue") or existing["days_overdue"]
+                extended_values = [
+                    customer.get(field) or existing[field] for field in EXTENDED_CUSTOMER_FIELDS
+                ]
+
                 warning_note = issue_note
                 previous_timestamp = existing["status_timestamp"]
                 if previous_timestamp:
@@ -319,11 +341,11 @@ class Database:
                     WHERE loan_number = ?
                     """,
                     (
-                        customer["first_name"],
-                        customer["last_name"],
+                        first_name,
+                        last_name,
                         phone_json,
-                        customer.get("balance", ""),
-                        customer.get("days_overdue", ""),
+                        balance,
+                        days_overdue,
                         row_status,
                         timestamp,
                         warning_note,
@@ -558,18 +580,58 @@ class Database:
                 ).fetchone()
             return self._customer_from_row(row) if row else None
 
-    def update_customer_status(self, customer_id: int, status: str) -> None:
+    def update_customer_status(
+        self, customer_id: int, status: str, *, expected_statuses: tuple[str, ...] | None = None
+    ) -> bool:
+        """Set a customer's status.
+
+        If `expected_statuses` is given, the UPDATE only applies when the
+        customer's CURRENT status (checked atomically, in the same SQL
+        statement, not via a separate read beforehand) is still one of
+        those values -- this is what makes a status transition safe to
+        call from two overlapping requests for the same customer_id (e.g.
+        a rapid double-tap on an outcome button firing two near-
+        simultaneous POSTs, each handled on its own thread by
+        ThreadingHTTPServer). A plain "read status, check it, then write"
+        sequence is NOT atomic: both requests can read the same
+        pre-transition status before either commits its write, so both
+        proceed to apply their full side effects (event recording,
+        attempt-count increments, etc.) -- confirmed reproducible with 5
+        concurrent threads landing 5x the intended attempt_count and
+        event rows before this fix. A single UPDATE ... WHERE status IN
+        (...) is atomic under SQLite's own locking: only the first writer
+        to actually commit can match the WHERE clause, so a second,
+        losing request's UPDATE affects zero rows.
+
+        Returns True if a row was actually updated, False if no row
+        matched (missing customer_id, or -- when expected_statuses is
+        given -- the customer had already moved out of the expected
+        status, meaning the caller lost a race and should not apply any
+        side effects for this call).
+        """
         timestamp = datetime.now(timezone.utc).isoformat()
         with self.connect() as conn:
-            conn.execute(
-                """
-                UPDATE customers
-                SET status = ?, status_timestamp = ?, warning_note = NULL
-                WHERE id = ?
-                """,
-                (status, timestamp, customer_id),
-            )
+            if expected_statuses:
+                placeholders = ", ".join("?" for _ in expected_statuses)
+                cursor = conn.execute(
+                    f"""
+                    UPDATE customers
+                    SET status = ?, status_timestamp = ?, warning_note = NULL
+                    WHERE id = ? AND status IN ({placeholders})
+                    """,
+                    (status, timestamp, customer_id, *expected_statuses),
+                )
+            else:
+                cursor = conn.execute(
+                    """
+                    UPDATE customers
+                    SET status = ?, status_timestamp = ?, warning_note = NULL
+                    WHERE id = ?
+                    """,
+                    (status, timestamp, customer_id),
+                )
             conn.commit()
+            return cursor.rowcount > 0
 
     def count_by_status(self, status: str) -> int:
         with self.connect() as conn:

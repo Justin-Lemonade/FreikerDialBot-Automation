@@ -143,7 +143,15 @@ class QueueEngine:
                     customer.get("id"),
                     customer.get("loan_number"),
                 )
-                self.database.update_customer_status(customer["id"], "invalid_number")
+                # Atomic guard (see update_customer_status's docstring):
+                # a concurrent apply_action/next_customer call could have
+                # already moved this row out of 'waiting' between the
+                # read above and this write. If so, skip silently instead
+                # of overwriting whatever it was just legitimately
+                # transitioned to.
+                self.database.update_customer_status(
+                    customer["id"], "invalid_number", expected_statuses=("waiting",)
+                )
                 progress = self._progress()
                 continue
 
@@ -190,7 +198,20 @@ class QueueEngine:
             # make sense here.
             return self.next_customer()
 
-        self.database.update_customer_status(customer_id, status)
+        # Atomic claim: only proceed with side effects (attempt-count
+        # increment, event recording) if this call actually won the
+        # transition. The current_status check above is a fast-path
+        # convenience for the common single-request case; this is what
+        # makes the transition itself safe against a second, overlapping
+        # request for the same customer_id (see update_customer_status's
+        # docstring). A losing request falls through to next_customer()
+        # exactly like the current_status check above already does for
+        # an unambiguously-already-handled customer.
+        claimed = self.database.update_customer_status(
+            customer_id, status, expected_statuses=(current_status,)
+        )
+        if not claimed:
+            return self.next_customer()
         if status == "call_later":
             # Count this attempt. Enforcement happens later, in
             # restart_call_later() -- see get_max_call_attempts().
