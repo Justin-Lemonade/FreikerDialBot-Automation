@@ -148,6 +148,7 @@ class Importer:
         result = ImportResult()
 
         all_rows = []
+        flagged_count = 0
         rejected = 0
 
         for row in customers:
@@ -166,6 +167,7 @@ class Importer:
                 entry["_status"] = "needs_review"
                 entry["_issue"] = "; ".join(issues)
                 all_rows.append(entry)
+                flagged_count += 1
             else:
                 all_rows.append(row)
 
@@ -178,53 +180,21 @@ class Importer:
         if not all_rows:
             raise ImporterError("Import is empty: no valid customers found.")
 
-        # Check for existing customers BEFORE inserting (for duplicate warnings).
-        # Need each match's status, not just its loan_number: insert_customers
-        # only actually SKIPS a pre-existing loan_number if it's still
-        # 'waiting' (an unworked duplicate within the active queue) -- a
-        # loan_number that was already worked in a PRIOR session is
-        # refreshed/requeued instead, which is allowed, expected behavior,
-        # not a skip. Treating every pre-existing match as "skipped" (the
-        # previous behavior) produced a warning that flatly contradicted
-        # imported_count on the very next line of the same message.
+        # Check for existing customers BEFORE inserting (for duplicate warnings)
         loan_numbers = [r.get("loan_number") for r in all_rows if r.get("loan_number")]
-        existing_by_loan: dict[str, dict] = {}
+        existing_loans = set()
         if loan_numbers:
             existing = self.database.get_customers_by_loan_numbers(loan_numbers)
-            existing_by_loan = {c["loan_number"]: c for c in existing}
-        skipped_loans = {
-            ln for ln, c in existing_by_loan.items() if c["status"] == "waiting"
-        }
+            existing_loans = {c["loan_number"] for c in existing}
 
         inserted = self.database.insert_customers(all_rows)
 
-        # imported_count means "clean (non-flagged) rows that made it into
-        # the queue." inserted counts every row insert_customers actually
-        # stored, flagged or not, so the flagged rows that WERE stored need
-        # subtracting out -- not flagged_count outright. flagged_count
-        # alone silently went negative whenever a flagged row was also a
-        # still-waiting duplicate that got skipped rather than stored (see
-        # the regression test for this exact scenario).
-        flagged_stored = sum(
-            1
-            for r in all_rows
-            if r.get("_status") == "needs_review" and r.get("loan_number") not in skipped_loans
-        )
-        result.imported_count = inserted - flagged_stored
-        # flagged_count is what the operator-facing message calls "N
-        # record(s) ... They appear in the queue" -- so it must only count
-        # flagged rows that actually landed in the queue, same reasoning
-        # as flagged_stored above (a flagged row that was skipped as a
-        # duplicate does NOT appear in the queue).
-        result.flagged_count = flagged_stored
+        result.imported_count = inserted - flagged_count
+        result.flagged_count = flagged_count
 
-        # Round-trip verification: warn only about loan_numbers that were
-        # genuinely skipped (still-waiting duplicates). A refreshed/
-        # requeued loan_number is expected, allowed behavior with its own
-        # same-day warning_note on the customer record (covered by a
-        # separate test) -- it should not also claim to have been skipped.
+        # Round-trip verification: warn about pre-existing customers
         for ln in loan_numbers:
-            if ln in skipped_loans:
+            if ln in existing_loans:
                 result.verification_warnings.append(
                     f"Customer {ln} already existed and was skipped."
                 )

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useAppSettings } from '../hooks/appSettingsContext';
+import { useAppSettings } from '../hooks/useAppSettings';
 import type { VisibleField } from '../types';
 
 interface Props {
@@ -268,230 +268,17 @@ const VisibleFieldsRow = () => {
   );
 };
 
-/** Card layout density. Real: read by CustomerCard to tighten spacing
- * and hide secondary chrome (the CUSTOMER n/m + LIVE badge row, the
- * "PHONE NUMBERS" caption) -- the info grid itself is always retained
- * regardless of this setting. */
-const CardDensityRow = () => {
-  const { settings, updateSettings, isSaving } = useAppSettings();
-  const options: { label: string; value: 'compact' | 'expanded' }[] = [
-    { label: 'Expanded', value: 'expanded' },
-    { label: 'Compact', value: 'compact' },
-  ];
-  return (
-    <div className="border-b py-3" style={{ borderColor: 'var(--border-frame)' }}>
-      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
-        Compact vs Expanded Cards
-      </p>
-      <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
-        Card density on Home
-      </p>
-      <div className="grid grid-cols-2 gap-1.5">
-        {options.map((option) => {
-          const isActive = settings.cardDensity === option.value;
-          return (
-            <button
-              key={option.value}
-              onClick={() => updateSettings({ cardDensity: option.value })}
-              disabled={isSaving}
-              className="retro-button flex min-h-[44px] items-center justify-center font-display text-[10px] disabled:opacity-50"
-              style={{
-                background: isActive ? 'var(--accent-green)' : 'var(--bg-panel)',
-                color: isActive ? 'var(--accent-green-text)' : 'var(--text-muted)',
-                border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
-              }}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-/** Progress bar visual detail (segment count), not queue semantics --
- * currentIndex/totalCount/progressPercent are always the same real
- * backend values regardless of this setting. Real: read by
- * ProgressHeader. */
-const ProgressDensityRow = () => {
-  const { settings, updateSettings, isSaving } = useAppSettings();
-  const options: { label: string; value: 'low' | 'normal' | 'high' }[] = [
-    { label: 'Low', value: 'low' },
-    { label: 'Normal', value: 'normal' },
-    { label: 'High', value: 'high' },
-  ];
-  return (
-    <div className="border-b py-3" style={{ borderColor: 'var(--border-frame)' }}>
-      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
-        Progress Density
-      </p>
-      <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
-        Progress bar detail level
-      </p>
-      <div className="grid grid-cols-3 gap-1.5">
-        {options.map((option) => {
-          const isActive = settings.progressDensity === option.value;
-          return (
-            <button
-              key={option.value}
-              onClick={() => updateSettings({ progressDensity: option.value })}
-              disabled={isSaving}
-              className="retro-button flex min-h-[44px] items-center justify-center font-display text-[10px] disabled:opacity-50"
-              style={{
-                background: isActive ? 'var(--accent-green)' : 'var(--bg-panel)',
-                color: isActive ? 'var(--accent-green-text)' : 'var(--text-muted)',
-                border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
-              }}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-/** Whether CustomerCard shows a truncated preview of the customer's
- * latest note. Real: same on/off toggle pattern as Auto Advance. */
-const NotesPreviewRow = () => {
-  const { settings, updateSettings, isSaving } = useAppSettings();
-  return (
-    <div className="flex items-center justify-between border-b py-3 last:border-b-0" style={{ borderColor: 'var(--border-frame)' }}>
-      <div>
-        <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
-          Notes Preview
-        </p>
-        <p className="font-data text-sm" style={{ color: 'var(--text-muted)' }}>
-          Show latest note on the call card
-        </p>
-      </div>
-      <button
-        onClick={() => updateSettings({ notesPreview: !settings.notesPreview })}
-        disabled={isSaving}
-        className="retro-button min-h-[44px] min-w-[64px] px-3 font-display text-[10px] disabled:opacity-50"
-        style={{
-          background: settings.notesPreview ? 'var(--accent-green)' : 'var(--bg-panel)',
-          color: settings.notesPreview ? 'var(--accent-green-text)' : 'var(--text-muted)',
-          border: `1px solid ${settings.notesPreview ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
-        }}
-      >
-        {settings.notesPreview ? 'ON' : 'OFF'}
-      </button>
-    </div>
-  );
-};
-
-const SEARCH_FIELD_OPTIONS: { label: string; value: 'name' | 'loanNumber' | 'phone' }[] = [
-  { label: 'Name', value: 'name' },
-  { label: 'Loan #', value: 'loanNumber' },
-  { label: 'Phone', value: 'phone' },
-];
-
-/** Which field groups Search matches against by default. Real and
- * backend-enforced -- MiniAppService.search_customers reads this
- * setting and scopes Database.search_customers's WHERE clause with it.
- * Multi-select, same pattern as Visible Fields; an empty selection
- * falls back to searching everything rather than breaking Search. */
-const DefaultSearchFieldsRow = () => {
-  const { settings, updateSettings, isSaving } = useAppSettings();
-  const toggle = (field: 'name' | 'loanNumber' | 'phone') => {
-    const next = settings.defaultSearchFields.includes(field)
-      ? settings.defaultSearchFields.filter((f) => f !== field)
-      : [...settings.defaultSearchFields, field];
-    updateSettings({ defaultSearchFields: next });
-  };
-  return (
-    <div className="border-b py-3 last:border-b-0" style={{ borderColor: 'var(--border-frame)' }}>
-      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
-        Default Search Fields
-      </p>
-      <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
-        Which fields are searched by default
-      </p>
-      <div className="grid grid-cols-3 gap-1.5">
-        {SEARCH_FIELD_OPTIONS.map((option) => {
-          const isActive = settings.defaultSearchFields.includes(option.value);
-          return (
-            <button
-              key={option.value}
-              onClick={() => toggle(option.value)}
-              disabled={isSaving}
-              className="retro-button flex min-h-[44px] items-center justify-center px-1 text-center font-display text-[9px] disabled:opacity-50"
-              style={{
-                background: isActive ? 'var(--accent-green)' : 'var(--bg-panel)',
-                color: isActive ? 'var(--accent-green-text)' : 'var(--text-muted)',
-                border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
-              }}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const ACCENT_COLOR_OPTIONS: { label: string; value: 'green' | 'blue' | 'amber' | 'purple'; swatch: string }[] = [
-  { label: 'Green', value: 'green', swatch: '#6fe08a' },
-  { label: 'Blue', value: 'blue', swatch: '#4f9dff' },
-  { label: 'Amber', value: 'amber', swatch: '#e0b84f' },
-  { label: 'Purple', value: 'purple', swatch: '#8a5cd6' },
-];
-
-/** Fixed design-token palette (not a free color picker). Real: App.tsx
- * reads this and sets data-accent on the document root, which
- * index.css's [data-accent="..."] blocks read to override
- * --accent-green/-strong/-text everywhere those variables are used. */
-const AccentColorRow = () => {
-  const { settings, updateSettings, isSaving } = useAppSettings();
-  return (
-    <div className="border-b py-3" style={{ borderColor: 'var(--border-frame)' }}>
-      <p className="font-data text-lg" style={{ color: 'var(--text-primary)' }}>
-        Accent Color
-      </p>
-      <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
-        Override the default green accent
-      </p>
-      <div className="grid grid-cols-4 gap-1.5">
-        {ACCENT_COLOR_OPTIONS.map((option) => {
-          const isActive = settings.accentColor === option.value;
-          return (
-            <button
-              key={option.value}
-              onClick={() => updateSettings({ accentColor: option.value })}
-              disabled={isSaving}
-              className="retro-button flex min-h-[44px] flex-col items-center justify-center gap-1 font-display text-[8px] disabled:opacity-50"
-              style={{
-                background: isActive ? 'var(--bg-panel-raised)' : 'var(--bg-panel)',
-                color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                border: `1px solid ${isActive ? option.swatch : 'var(--border-frame)'}`,
-              }}
-            >
-              <span className="h-3 w-3 rounded-full" style={{ background: option.swatch }} aria-hidden="true" />
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-/** Retimes the app's existing named animations (no new animations
- * added, per the brief). Real: App.tsx reads this and sets data-motion
- * on the document root, which index.css's [data-motion="..."] blocks
- * read to override animation/transition durations. Always overridden
- * to fully off by the OS-level prefers-reduced-motion regardless of
- * this setting. */
+/**
+ * Whether transition/glow animations play at full motion or are
+ * reduced. Real and backend-enforced -- see App.tsx's data-motion
+ * effect and index.css's html[data-motion='reduced'] rule, which has
+ * the identical effect to the OS-level prefers-reduced-motion query.
+ */
 const AnimationIntensityRow = () => {
   const { settings, updateSettings, isSaving } = useAppSettings();
-  const options: { label: string; value: 'low' | 'normal' | 'high' }[] = [
-    { label: 'Low', value: 'low' },
-    { label: 'Normal', value: 'normal' },
-    { label: 'High', value: 'high' },
+  const options: { label: string; value: 'full' | 'reduced' }[] = [
+    { label: 'Full', value: 'full' },
+    { label: 'Reduced', value: 'reduced' },
   ];
   return (
     <div className="border-b py-3 last:border-b-0" style={{ borderColor: 'var(--border-frame)' }}>
@@ -501,7 +288,7 @@ const AnimationIntensityRow = () => {
       <p className="mb-2.5 font-data text-sm" style={{ color: 'var(--text-muted)' }}>
         Motion for transitions/glow
       </p>
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-2 gap-1.5">
         {options.map((option) => {
           const isActive = settings.animationIntensity === option.value;
           return (
@@ -570,12 +357,9 @@ const Section = ({ title, children }: SectionProps) => (
  * category list. Real, backend-enforced or otherwise genuinely
  * functioning settings: Telegram Theme and Haptics (useTelegram.ts --
  * always on, since there's no toggle for either yet, but the row
- * describes real current behavior, not a guess), Max Call Attempts,
- * Auto Advance, Primary Phone Preference, Pre-ready Count, Visible
- * Fields, Card Density, Progress Density, Notes Preview, Default
- * Search Fields, Accent Color, and Animation Intensity (all
- * useAppSettings.tsx / GET/POST /settings), and Backend Connectivity /
- * Sync Status (useSession.ts's isStale/lastSyncedAt).
+ * describes real current behavior, not a guess), Max Call Attempts and
+ * Auto Advance (useAppSettings.ts / GET/POST /settings), and Backend
+ * Connectivity / Sync Status (useSession.ts's isStale/lastSyncedAt).
  *
  * Everything else is an honest, disabled "Coming soon" placeholder --
  * grouped into the right category now so adding the real control later
@@ -597,14 +381,14 @@ export const Settings = ({ isStale, lastSyncedAt }: Props) => {
         <SettingRow label="Show Both Numbers" description="Always on -- see the call card" value="ON" />
         <PrimaryPhoneRow />
         <SettingRow label="Quick Number Switching" description="Tap a number on the call card to make it active" value="ON" />
-        <SettingRow label="Tap-to-Dial" description="For every non-blacklisted number on file" value="ON" />
+        <SettingRow label="Tap-to-Dial" description="Always on for every number on file" value="ON" />
       </Section>
 
       <Section title="DISPLAY">
-        <CardDensityRow />
+        <SettingRow label="Compact vs Expanded Cards" description="Card density on Home" value="-" disabled />
         <VisibleFieldsRow />
-        <ProgressDensityRow />
-        <NotesPreviewRow />
+        <SettingRow label="Progress Density" description="Progress bar detail level" value="-" disabled />
+        <SettingRow label="Notes Preview" description="Show latest note on the call card" value="-" disabled />
       </Section>
 
       <Section title="QUEUE">
@@ -633,7 +417,7 @@ export const Settings = ({ isStale, lastSyncedAt }: Props) => {
       <Section title="SEARCH">
         <SettingRow label="Highlight Matched Fields" description="Always on -- see Search results" value="ON" />
         <SettingRow label="Keyboard-Safe Layout" description="Always on -- input stays reachable" value="ON" />
-        <DefaultSearchFieldsRow />
+        <SettingRow label="Default Search Fields" description="Which fields are searched by default" value="-" disabled />
       </Section>
 
       <Section title="APPEARANCE">
@@ -650,7 +434,7 @@ export const Settings = ({ isStale, lastSyncedAt }: Props) => {
             look. */}
         <SettingRow label="Telegram Theme" description="Uses the app's own fixed retro palette, not Telegram's theme" value="Custom" />
         <SettingRow label="Haptics" description="Vibrations for key actions" value="ON" />
-        <AccentColorRow />
+        <SettingRow label="Accent Color" description="Override the default green accent" value="-" disabled />
         <AnimationIntensityRow />
       </Section>
 

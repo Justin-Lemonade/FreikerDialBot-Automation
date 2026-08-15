@@ -181,7 +181,7 @@ class MiniAppService:
         self.session_manager.start_current_session()
         self.database.update_queue_session(current_customer_id=customer_id)
         self.statistics.record_event("queue_started", session_id=self.session_manager.current_session()["id"] if self.session_manager.current_session() else None, customer=self.database.get_customer(customer_id))
-        return {"ok": True, "customerId": str(customer_id), "startedAt": datetime.now(timezone.utc).isoformat()}
+        return {"ok": True, "customerId": customer_id, "startedAt": datetime.now(timezone.utc).isoformat()}
 
     def submit_call_result(
         self,
@@ -217,7 +217,7 @@ class MiniAppService:
         session_payload = self.get_current_session()
         return {
             "ok": True,
-            "customerId": str(customer_id),
+            "customerId": customer_id,
             "outcome": outcome,
             "status": status,
             "duration": duration,
@@ -234,7 +234,7 @@ class MiniAppService:
             customer=self.database.get_customer(int(customer_id)),
             notes=note.strip(),
         )
-        return {"ok": True, "customerId": str(customer_id), "note": note.strip()}
+        return {"ok": True, "customerId": customer_id, "note": note.strip()}
 
     def next_customer(self) -> dict[str, Any]:
         selection = self.queue_engine.next_customer()
@@ -292,40 +292,19 @@ class MiniAppService:
     _VISIBLE_FIELD_IDS = ("daysOverdue", "monthlyPayment", "balance")
     _DEFAULT_VISIBLE_FIELDS = "daysOverdue,monthlyPayment"
 
-    # The fixed, known set of Settings > Search > Default Search Fields
-    # groups. Maps 1:1 to the WHERE-clause branches
-    # Database.search_customers already builds; adding a new
-    # searchable field later means adding one entry here and one
-    # branch there.
-    _SEARCH_FIELD_IDS = ("name", "loanNumber", "phone")
-    _DEFAULT_SEARCH_FIELDS = "name,loanNumber,phone"
-
-    # Settings > Appearance > Accent Color -- a fixed palette of design
-    # tokens already defined in index.css (not a free color picker, per
-    # this pass's direction), keyed to the CSS custom-property triple
-    # each one overrides on the frontend.
-    _ACCENT_COLOR_IDS = ("green", "blue", "amber", "purple")
-
     def get_settings(self) -> dict[str, Any]:
         """Returns the currently-real, backend-enforced Settings values.
 
         Deliberately small: only settings that actually change backend
-        behavior, or that the frontend reads to change its own real
-        rendering/animation/search behavior, belong here (Max Call
-        Attempts is enforced by QueueEngine.restart_call_later; Auto
-        Advance is read by the frontend to decide whether to move to
-        the next customer automatically after an outcome; Primary Phone
-        Preference is enforced by
-        _ordered_phone_numbers/_customer_payload; Pre-ready Count is
-        read by queue_upcoming's `count` param; Visible Fields is read
-        by CustomerCard to decide which financial fields to render;
-        Card Density/Notes Preview are read by CustomerCard to change
-        its own layout; Progress Density is read by ProgressHeader to
-        change its own segment count; Default Search Fields is enforced
-        by search_customers's field-scoped WHERE clause; Accent
-        Color/Animation Intensity are read by App.tsx to set a root CSS
-        data-attribute). Anything not listed here is still a UI
-        placeholder per Settings.tsx and must not be faked.
+        behavior belong here (Max Call Attempts is enforced by
+        QueueEngine.restart_call_later; Auto Advance is read by the
+        frontend to decide whether to move to the next customer
+        automatically after an outcome; Primary Phone Preference is
+        enforced by _ordered_phone_numbers/_customer_payload; Pre-ready
+        Count is read by queue_upcoming's `count` param; Visible Fields
+        is read by CustomerCard to decide which financial fields to
+        render). Anything not listed here is still a UI placeholder per
+        Settings.tsx and must not be faked.
         """
         raw = self.database.get_settings(
             [
@@ -334,11 +313,6 @@ class MiniAppService:
                 "primary_phone_preference",
                 "pre_ready_count",
                 "visible_fields",
-                "card_density",
-                "progress_density",
-                "notes_preview",
-                "default_search_fields",
-                "accent_color",
                 "animation_intensity",
             ]
         )
@@ -351,13 +325,6 @@ class MiniAppService:
             visible_fields = []
         else:
             visible_fields = visible_fields_raw.split(",")
-        search_fields_raw = raw.get("default_search_fields")
-        if search_fields_raw is None:
-            search_fields = self._DEFAULT_SEARCH_FIELDS.split(",")
-        elif search_fields_raw == "":
-            search_fields = []
-        else:
-            search_fields = search_fields_raw.split(",")
         return {
             "maxCallAttempts": None if max_attempts_raw in (None, "unlimited") else int(max_attempts_raw),
             # Defaults to True: this matches the app's existing behavior
@@ -380,34 +347,13 @@ class MiniAppService:
             # payment, balance excluded -- Pass 4 deliberately moved
             # balance to More Info to keep the calling card compact).
             "visibleFields": visible_fields,
-            # CustomerCard layout density. Defaults to "expanded" --
-            # today's existing spacing/labels, unchanged for anyone who
-            # has never touched the setting.
-            "cardDensity": raw.get("card_density") or "expanded",
-            # How many segments ProgressHeader renders. Defaults to
-            # "normal" (20 segments) -- today's existing SEGMENT_COUNT,
-            # unchanged for anyone who has never touched the setting.
-            "progressDensity": raw.get("progress_density") or "normal",
-            # Whether CustomerCard shows a truncated preview of the
-            # latest note. Defaults to False -- today's existing
-            # behavior (no notes shown on the calling card at all).
-            "notesPreview": raw.get("notes_preview") == "1",
-            # Which field groups search_customers matches against by
-            # default. Defaults to all three -- today's existing
-            # behavior (name + loan number + phone, always).
-            "defaultSearchFields": search_fields,
-            # Settings > Appearance > Accent Color, a fixed palette (not
-            # a free picker). Defaults to "green" -- today's existing
-            # hardcoded --accent-green/-strong/-text values.
-            "accentColor": raw.get("accent_color") or "green",
-            # Animation Intensity: Low/Normal/High, defaulting to
-            # "normal" -- today's existing hardcoded animation-duration
-            # values, unchanged for anyone who has never touched the
-            # setting. Retimes the app's existing named animations
-            # rather than a binary on/off; still overridden to fully
-            # off by prefers-reduced-motion regardless of this setting
-            # -- see index.css.
-            "animationIntensity": raw.get("animation_intensity") or "normal",
+            # Whether transition/glow animations (card slide, progress
+            # segment "charge" flash, nav-tab pop) play at full motion
+            # or are reduced -- real, read by the frontend root
+            # (App.tsx applies a data attribute index.css keys off of).
+            # Defaults to "full": today's existing behavior for anyone
+            # who has never touched the setting.
+            "animationIntensity": raw.get("animation_intensity") or "full",
         }
 
     def update_settings(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -452,36 +398,10 @@ class MiniAppService:
             # construction rather than by convention.
             ordered = [field for field in self._VISIBLE_FIELD_IDS if field in value]
             self.database.set_setting("visible_fields", ",".join(ordered))
-        if "cardDensity" in fields:
-            density = fields["cardDensity"]
-            if density not in ("compact", "expanded"):
-                return {"ok": False, "error": "cardDensity must be 'compact' or 'expanded'"}
-            self.database.set_setting("card_density", density)
-        if "progressDensity" in fields:
-            progress_density = fields["progressDensity"]
-            if progress_density not in ("low", "normal", "high"):
-                return {"ok": False, "error": "progressDensity must be 'low', 'normal', or 'high'"}
-            self.database.set_setting("progress_density", progress_density)
-        if "notesPreview" in fields:
-            self.database.set_setting("notes_preview", "1" if fields["notesPreview"] else "0")
-        if "defaultSearchFields" in fields:
-            value = fields["defaultSearchFields"]
-            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-                return {"ok": False, "error": "defaultSearchFields must be a list of strings"}
-            unknown = set(value) - set(self._SEARCH_FIELD_IDS)
-            if unknown:
-                return {"ok": False, "error": f"defaultSearchFields contains unknown field(s): {sorted(unknown)}"}
-            ordered = [field for field in self._SEARCH_FIELD_IDS if field in value]
-            self.database.set_setting("default_search_fields", ",".join(ordered))
-        if "accentColor" in fields:
-            color = fields["accentColor"]
-            if color not in self._ACCENT_COLOR_IDS:
-                return {"ok": False, "error": f"accentColor must be one of {list(self._ACCENT_COLOR_IDS)}"}
-            self.database.set_setting("accent_color", color)
         if "animationIntensity" in fields:
             intensity = fields["animationIntensity"]
-            if intensity not in ("low", "normal", "high"):
-                return {"ok": False, "error": "animationIntensity must be 'low', 'normal', or 'high'"}
+            if intensity not in ("full", "reduced"):
+                return {"ok": False, "error": "animationIntensity must be 'full' or 'reduced'"}
             self.database.set_setting("animation_intensity", intensity)
         return {"ok": True, "settings": self.get_settings()}
 
@@ -550,15 +470,7 @@ class MiniAppService:
         return results
 
     def search_customers(self, query: str) -> dict[str, Any]:
-        # Settings > Search > Default Search Fields: reads the same
-        # app_settings-backed value get_settings()/update_settings()
-        # write, so the search endpoint and the Settings screen can
-        # never disagree about which fields are active. Falls back to
-        # every field if the stored setting resolves to an empty list
-        # (see search_customers's own docstring for why an empty
-        # search-field set must never silently mean "search nothing").
-        fields = self.get_settings()["defaultSearchFields"]
-        results = self.database.search_customers(query, fields=fields or None)
+        results = self.database.search_customers(query)
         return {"results": [self._customer_payload(customer) for customer in results]}
 
     def get_customer_record(self, customer_id: int) -> dict[str, Any] | None:

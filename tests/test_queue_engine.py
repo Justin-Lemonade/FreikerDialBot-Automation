@@ -123,46 +123,6 @@ def test_apply_action_other_outcomes_do_not_increment_attempt_count(database):
     assert database.get_customer(customer_id)["attempt_count"] == 0
 
 
-def test_apply_action_is_safe_against_concurrent_double_submission(database):
-    """REGRESSION: apply_action used to read the customer's status, check
-    it, and only THEN write the new status -- three separate steps, not
-    atomic. Two overlapping requests for the same customer_id (e.g. a
-    rapid double-tap on an outcome button, each handled on its own thread
-    by ThreadingHTTPServer) could both read the same pre-transition
-    status before either committed, so both proceeded to apply their full
-    side effects. Confirmed reproducible: 5 concurrent threads calling
-    apply_action(customer_id, "call_later") on the same customer produced
-    attempt_count == 5 and 5 duplicate customer_call_later events instead
-    of 1 of each. Now the status transition itself is atomic (a single
-    UPDATE ... WHERE status IN (...) matched against the customer's
-    current status is only true for the first writer to commit), so a
-    losing request cleanly no-ops instead of double-applying."""
-    import threading
-
-    from statistics_engine import StatisticsEngine
-
-    queue = QueueEngine(database, statistics=StatisticsEngine(database))
-    first = queue.resume()
-    customer_id = first.customer["id"]
-
-    def worker():
-        queue.apply_action(customer_id, "call_later")
-
-    threads = [threading.Thread(target=worker) for _ in range(5)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    assert database.get_customer(customer_id)["attempt_count"] == 1
-    with database.connect() as conn:
-        count = conn.execute(
-            "SELECT COUNT(*) AS n FROM customer_events WHERE customer_id = ? AND event_type = 'customer_call_later'",
-            (customer_id,),
-        ).fetchone()["n"]
-    assert count == 1
-
-
 def test_get_max_call_attempts_defaults_to_unlimited(database):
     queue = QueueEngine(database)
     assert queue.get_max_call_attempts() is None

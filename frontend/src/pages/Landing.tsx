@@ -45,7 +45,7 @@ export const Landing = ({ session, onContinueSession, onOpenUpload, onOpenSettin
         <div>
           <p
             className="font-display text-3xl leading-relaxed"
-            style={{ color: 'var(--text-primary)', textShadow: '0 0 12px rgba(238, 244, 240, 0.6), 0 0 24px var(--accent-glow-strong)' }}
+            style={{ color: 'var(--text-primary)', textShadow: '0 0 12px rgba(238, 244, 240, 0.6), 0 0 24px rgba(111, 224, 138, 0.3)' }}
           >
             FREIKER DIAL
           </p>

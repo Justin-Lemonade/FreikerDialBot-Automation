@@ -46,6 +46,11 @@ Then:
    installed, and starts the Telegram bot. There is no separate
    frontend server to run in normal development.
 
+The ngrok tunnel is edge-authenticated by default: `start_mini_app.py`
+applies the `oauth.yml` traffic policy (Google OAuth), so every visitor
+must sign in before the Mini App loads. Set `NGROK_TRAFFIC_POLICY_FILE=none`
+to disable the gate, or edit `oauth.yml` (e.g. to restrict by email).
+
 ### Manual setup
 
 If you'd rather not use the setup script:

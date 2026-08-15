@@ -26,17 +26,6 @@ interface Props {
    * this component still works standalone/in tests without a settings
    * provider. */
   visibleFields?: VisibleField[];
-  /** Settings > Display > Compact vs Expanded Cards -- tighter spacing
-   * and reduced secondary chrome (the CUSTOMER n/m + LIVE badge row,
-   * and the "PHONE NUMBERS" caption) when compact. The info grid
-   * itself is always retained per this setting's own direction --
-   * compact never hides visibleFields, only the surrounding chrome. */
-  cardDensity?: 'compact' | 'expanded';
-  /** Settings > Display > Notes Preview -- shows a truncated preview
-   * of the customer's single latest note (the same warning_note
-   * MainLayout's note editor writes to) when true. Full note history
-   * lives in CustomerDetail ("More Info") regardless of this setting. */
-  notesPreview?: boolean;
 }
 
 interface InfoCellProps {
@@ -94,17 +83,7 @@ const DEFAULT_VISIBLE_FIELDS: VisibleField[] = ['daysOverdue', 'monthlyPayment']
  * interface" instruction -- this card is the quick-glance surface, not
  * the exhaustive one.
  */
-export const CustomerCard = ({
-  customer,
-  indexLabel,
-  isLeaving,
-  activePhone,
-  onSelectPhone,
-  visibleFields = DEFAULT_VISIBLE_FIELDS,
-  cardDensity = 'expanded',
-  notesPreview = false,
-}: Props) => {
-  const isCompact = cardDensity === 'compact';
+export const CustomerCard = ({ customer, indexLabel, isLeaving, activePhone, onSelectPhone, visibleFields = DEFAULT_VISIBLE_FIELDS }: Props) => {
   const [isEntering, setIsEntering] = useState(true);
 
   useEffect(() => {
@@ -126,30 +105,22 @@ export const CustomerCard = ({
   }
 
   return (
-    <div className={`retro-card ${isCompact ? 'p-3' : 'p-5'} ${transitionClass}`}>
-      {/* CUSTOMER n/m + LIVE badge is secondary chrome (status
-          metadata, not customer data) -- the first thing Compact mode
-          hides, per this setting's own "reduced secondary info"
-          direction. indexLabel is already shown in ProgressHeader's
-          n/m counter above this card, so hiding it here in compact
-          mode never loses information, only de-duplicates it. */}
-      {!isCompact && (
-        <div className="mb-3 flex items-center justify-between">
-          <p className="font-display text-[9px]" style={{ color: 'var(--text-muted)' }}>
-            {indexLabel ? `CUSTOMER ${indexLabel}` : 'CURRENT CUSTOMER'}
-          </p>
-          <div
-            className="rounded-sm border px-2 py-0.5 font-display text-[8px]"
-            style={{ borderColor: 'var(--accent-green-strong)', color: 'var(--accent-green)' }}
-          >
-            LIVE
-          </div>
-        </div>
-      )}
-
-      <div className={`flex items-start gap-3 border-b ${isCompact ? 'mb-2 pb-2' : 'mb-4 pb-3'}`} style={{ borderColor: 'var(--border-frame)' }}>
+    <div className={`retro-card p-5 ${transitionClass}`}>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="font-display text-[9px]" style={{ color: 'var(--text-muted)' }}>
+          {indexLabel ? `CUSTOMER ${indexLabel}` : 'CURRENT CUSTOMER'}
+        </p>
         <div
-          className={`flex shrink-0 items-center justify-center text-2xl ${isCompact ? 'h-9 w-9' : 'h-12 w-12'}`}
+          className="rounded-sm border px-2 py-0.5 font-display text-[8px]"
+          style={{ borderColor: 'var(--accent-green-strong)', color: 'var(--accent-green)' }}
+        >
+          LIVE
+        </div>
+      </div>
+
+      <div className="mb-4 flex items-start gap-3 border-b pb-3" style={{ borderColor: 'var(--border-frame)' }}>
+        <div
+          className="flex h-12 w-12 shrink-0 items-center justify-center text-2xl"
           style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-frame)' }}
         >
           🙂
@@ -157,7 +128,7 @@ export const CustomerCard = ({
         {/* Never truncated: long names wrap onto a second line instead
             of being cut off, per the brief's explicit requirement. */}
         <div className="min-w-0">
-          <h2 className={`break-words font-data leading-tight ${isCompact ? 'text-xl' : 'text-2xl'}`} style={{ color: 'var(--text-primary)' }}>
+          <h2 className="break-words font-data text-2xl leading-tight" style={{ color: 'var(--text-primary)' }}>
             {customer.name || '(name missing)'}
           </h2>
           <p className="break-words font-data text-base" style={{ color: 'var(--text-muted)' }}>
@@ -174,29 +145,15 @@ export const CustomerCard = ({
         </div>
       )}
 
-      {/* Settings > Display > Notes Preview -- truncated, single line,
-          never the full note (that's what "More Info" / the notes
-          editor are for). Uses the same warning_note the note editor
-          in MainLayout reads/writes, so this can never show stale or
-          fabricated content -- if there's no note on file, nothing
-          renders here at all. */}
-      {notesPreview && customer.notes.length > 0 && (
-        <p className={`truncate font-data text-sm ${isCompact ? 'mt-2' : 'mt-3'}`} style={{ color: 'var(--text-muted)' }}>
-          📝 {customer.notes[customer.notes.length - 1]}
-        </p>
-      )}
-
       {/* Both phone numbers, each independently tap-to-dial -- More
           Info now lives in the outcome-button row below the card
           instead of here (UI pass 4: "Move More Info below the
           primary outcome buttons"), so this stays a simple, compact
           phone list. */}
-      <div className={isCompact ? 'mt-2' : 'mt-3'}>
-        {!isCompact && (
-          <p className="mb-1.5 font-display text-[8px]" style={{ color: 'var(--text-muted)' }}>
-            📞 PHONE NUMBERS
-          </p>
-        )}
+      <div className="mt-3">
+        <p className="mb-1.5 font-display text-[8px]" style={{ color: 'var(--text-muted)' }}>
+          📞 PHONE NUMBERS
+        </p>
         {customer.phones.length === 0 ? (
           <p className="font-data text-base" style={{ color: 'var(--text-dim)' }}>
             No phone on file
@@ -205,31 +162,6 @@ export const CustomerCard = ({
           <div className="flex flex-wrap gap-2">
             {customer.phones.map((entry) => {
               const isActive = !entry.isBlacklisted && entry.number === activePhone;
-              // Blacklisted numbers are shown (strikethrough, dimmed,
-              // red) but must not actually be dialable -- a real bug
-              // found during UI Pass 8's audit: the crossed-out styling
-              // implied "don't use this one" while the tel: link still
-              // fully worked, letting a tap place a call to a number
-              // that's specifically on file as one to avoid. Rendered
-              // as a plain span instead of an <a> for that case: same
-              // look, no href, no onClick, nothing to tap.
-              if (entry.isBlacklisted) {
-                return (
-                  <span
-                    key={entry.number}
-                    className="min-h-[36px] px-3 py-1.5 font-data text-base"
-                    style={{
-                      border: '1px solid var(--accent-red)',
-                      color: 'var(--accent-red)',
-                      textDecoration: 'line-through',
-                      opacity: 0.7,
-                      cursor: 'not-allowed',
-                    }}
-                  >
-                    {entry.number}
-                  </span>
-                );
-              }
               return (
                 <a
                   key={entry.number}
@@ -237,9 +169,11 @@ export const CustomerCard = ({
                   onClick={() => onSelectPhone?.(entry.number)}
                   className="retro-button min-h-[36px] px-3 py-1.5 font-data text-base"
                   style={{
-                    border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
-                    color: isActive ? 'var(--accent-green-text)' : 'var(--accent-green)',
+                    border: `1px solid ${entry.isBlacklisted ? 'var(--accent-red)' : isActive ? 'var(--accent-green-strong)' : 'var(--border-frame)'}`,
+                    color: entry.isBlacklisted ? 'var(--accent-red)' : isActive ? 'var(--accent-green-text)' : 'var(--accent-green)',
                     background: isActive ? 'var(--accent-green)' : 'transparent',
+                    textDecoration: entry.isBlacklisted ? 'line-through' : 'none',
+                    opacity: entry.isBlacklisted ? 0.7 : 1,
                   }}
                 >
                   {isActive ? '● ' : ''}

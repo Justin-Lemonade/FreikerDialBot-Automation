@@ -62,6 +62,7 @@ The Mini App API exposes the same backend state to the web UI.
 - `MINI_APP_ALLOW_ANONYMOUS=1` is a development-only escape hatch and should stay off outside local testing.
 - Real API routes are listed in `_API_PATHS`; `/` and static assets stay open so the frontend can load before it has credentials.
 - `mini_app_api.py` also accepts `/api/*` as an alias for the same route set.
+- At the transport layer, `start_mini_app.py` applies `oauth.yml` (ngrok OAuth traffic policy, provider `google`) to the tunnel by default via `--traffic-policy-file`, so visitors must pass provider OAuth before any request reaches the API. `NGROK_TRAFFIC_POLICY_FILE=none` disables the gate.
 
 ### Current route groups
 
@@ -94,14 +95,6 @@ The API is organized around the same responsibilities as the backend. The curren
 `GET/POST /settings` also covers `primaryPhonePreference` (`"first"` | `"second"`, default `"first"`) and `preReadyCount` (`0`-`3`, default `0`). `primaryPhonePreference` reorders which stored phone number `_customer_payload` tries first when picking the auto-display/dial number, falling back through the rest (including skipping blacklisted numbers) exactly as before.
 
 `visibleFields` (list of `"daysOverdue"` | `"monthlyPayment"` | `"balance"`, default `["daysOverdue", "monthlyPayment"]`) controls which financial fields `CustomerCard`'s info grid renders. Always stored/returned pre-ordered to the fixed `_VISIBLE_FIELD_IDS` display order regardless of what order the client sent, so frontend and backend can't drift into disagreeing about field order.
-
-`GET/POST /settings` also covers:
-- `cardDensity` (`"compact"` | `"expanded"`, default `"expanded"`) -- read by `CustomerCard` to tighten its own spacing/hide secondary chrome. No backend enforcement beyond storage; purely a frontend layout preference.
-- `progressDensity` (`"low"` | `"normal"` | `"high"`, default `"normal"`) -- read by `ProgressHeader` to change its own segment count (10/20/30). Purely a frontend layout preference.
-- `notesPreview` (boolean, default `false`) -- read by `CustomerCard` to show a truncated preview of the customer's latest note. The note content itself is unchanged (still comes from `_customer_payload`'s existing `notes` field); this only toggles whether the card renders it.
-- `defaultSearchFields` (list of `"name"` | `"loanNumber"` | `"phone"`, default all three) -- **backend-enforced**: `MiniAppService.search_customers` reads this setting and passes it to `Database.search_customers`'s `fields` param, which scopes the WHERE clause. An empty list falls back to searching all fields (at both the service and `Database.search_customers` layers) rather than silently returning zero results for every query. Stored pre-ordered to `_SEARCH_FIELD_IDS`, same reasoning as `visibleFields`.
-- `accentColor` (`"green"` | `"blue"` | `"amber"` | `"purple"`, default `"green"`) -- a fixed design-token palette (not a free picker); read by the frontend to set a `data-accent` attribute on the document root, which CSS overrides `--accent-green`/`-strong`/`-text` under.
-- `animationIntensity` (`"low"` | `"normal"` | `"high"`, default `"normal"`) -- read by the frontend to set a `data-motion` attribute on the document root, which CSS overrides existing animation/transition durations under (no new animations added). `prefers-reduced-motion: reduce` always wins regardless of this setting.
 
 ### Ownership rules
 

@@ -4,17 +4,9 @@ interface Props {
   currentIndex: number;
   totalCount: number;
   progressPercent: number;
-  /** Settings > Display > Progress Density -- visual UI density (how
-   * many segments the bar renders), not queue semantics: this never
-   * changes currentIndex/totalCount/progressPercent, which always come
-   * straight from the backend regardless of this setting. */
-  density?: 'low' | 'normal' | 'high';
 }
 
-// Segment count per density level. "Normal" (20) is the original,
-// unchanged default -- Low/High only make the same real percentage
-// coarser/finer-grained to look at, never a different percentage.
-const SEGMENT_COUNTS: Record<'low' | 'normal' | 'high', number> = { low: 10, normal: 20, high: 30 };
+const SEGMENT_COUNT = 20;
 
 /**
  * Segmented / battery-style progress display (image 5/6 reference),
@@ -31,9 +23,8 @@ const SEGMENT_COUNTS: Record<'low' | 'normal' | 'high', number> = { low: 10, nor
  * time), not a real backend value, and made this block taller than the
  * brief wants on a screen that must not require constant scrolling.
  */
-export const ProgressHeader = ({ currentIndex, totalCount, progressPercent, density = 'normal' }: Props) => {
-  const segmentCount = SEGMENT_COUNTS[density];
-  const filledSegments = Math.round((Math.max(0, Math.min(100, progressPercent)) / 100) * segmentCount);
+export const ProgressHeader = ({ currentIndex, totalCount, progressPercent }: Props) => {
+  const filledSegments = Math.round((Math.max(0, Math.min(100, progressPercent)) / 100) * SEGMENT_COUNT);
 
   // Track the previous filled-segment count and current-index so we can
   // briefly flag "just advanced" cells/number for the glow/pulse
@@ -80,7 +71,7 @@ export const ProgressHeader = ({ currentIndex, totalCount, progressPercent, dens
           {currentIndex}/{totalCount}
         </span>
         <div className="flex flex-1 gap-[3px]" aria-hidden="true">
-          {Array.from({ length: segmentCount }, (_, index) => {
+          {Array.from({ length: SEGMENT_COUNT }, (_, index) => {
             const isFilled = index < filledSegments;
             const isNewest = isFilled && index === filledSegments - 1 && justCharged;
             return (

@@ -24,9 +24,6 @@ interface Props {
   lastSyncedAt?: number | null;
   bannerError?: string | null;
   onDismissError?: () => void;
-  /** Settings > Display > Progress Density -- segment count on
-   * ProgressHeader. */
-  progressDensity?: 'low' | 'normal' | 'high';
 }
 
 const NAV_ITEMS: { key: 'home' | 'commands' | 'search'; label: string; icon: string; matches: Screen[] }[] = [
@@ -60,7 +57,6 @@ export const MainLayout = ({
   lastSyncedAt,
   bannerError,
   onDismissError,
-  progressDensity,
 }: Props) => {
   const currentIndex = session?.currentCustomerIndex ?? 0;
   const totalCount = session?.customerCount ?? 0;
@@ -100,7 +96,7 @@ export const MainLayout = ({
           full viewport instead. Every number below comes straight from
           the backend; there is no client-side placeholder here. */}
       {showProgress && (
-        <ProgressHeader currentIndex={currentIndex} totalCount={totalCount} progressPercent={progressPercent} density={progressDensity} />
+        <ProgressHeader currentIndex={currentIndex} totalCount={totalCount} progressPercent={progressPercent} />
       )}
 
       {(isStale || bannerError) && (
@@ -145,7 +141,7 @@ export const MainLayout = ({
                 className={`nav-tab flex min-h-[58px] flex-1 flex-col items-center justify-center gap-1 rounded-[10px] ${isActive ? 'is-active' : ''}`}
                 style={{
                   color: isActive ? 'var(--accent-green)' : 'var(--text-muted)',
-                  background: isActive ? 'var(--accent-green-glow)' : 'transparent',
+                  background: isActive ? 'rgba(111, 224, 138, 0.12)' : 'transparent',
                   border: `1px solid ${isActive ? 'var(--accent-green-strong)' : 'transparent'}`,
                 }}
               >

@@ -259,10 +259,7 @@ class Database:
                 issue_note = customer.get("_issue")
                 phone_json = json.dumps(customer["phone_numbers"], ensure_ascii=False)
                 existing = conn.execute(
-                    "SELECT status, status_timestamp, first_name, last_name, phone_numbers, "
-                    "balance, days_overdue, "
-                    + ", ".join(EXTENDED_CUSTOMER_FIELDS)
-                    + " FROM customers WHERE loan_number = ?",
+                    "SELECT status, status_timestamp FROM customers WHERE loan_number = ?",
                     (customer["loan_number"],),
                 ).fetchone()
 
@@ -302,26 +299,7 @@ class Database:
                     continue
 
                 # Already worked in a prior session -- allowed to be
-                # re-queued for a new one. Every field below is coalesced
-                # (new value if the new import actually provided one,
-                # otherwise the existing value) instead of overwritten
-                # outright: a re-import whose source only captured a
-                # subset of fields (e.g. a name/phone-only screenshot
-                # AI-parse, or a lighter-weight spreadsheet) must not
-                # silently wipe out previously known balance/overdue/etc.
-                # data just because this particular import omitted it.
-                # Confirmed reproducible before this fix: re-importing a
-                # customer with no balance field zeroed out a real,
-                # previously recorded balance.
-                first_name = customer["first_name"] or existing["first_name"]
-                last_name = customer["last_name"] or existing["last_name"]
-                phone_json = phone_json if customer["phone_numbers"] else existing["phone_numbers"]
-                balance = customer.get("balance") or existing["balance"]
-                days_overdue = customer.get("days_overdue") or existing["days_overdue"]
-                extended_values = [
-                    customer.get(field) or existing[field] for field in EXTENDED_CUSTOMER_FIELDS
-                ]
-
+                # re-queued for a new one.
                 warning_note = issue_note
                 previous_timestamp = existing["status_timestamp"]
                 if previous_timestamp:
@@ -341,11 +319,11 @@ class Database:
                     WHERE loan_number = ?
                     """,
                     (
-                        first_name,
-                        last_name,
+                        customer["first_name"],
+                        customer["last_name"],
                         phone_json,
-                        balance,
-                        days_overdue,
+                        customer.get("balance", ""),
+                        customer.get("days_overdue", ""),
                         row_status,
                         timestamp,
                         warning_note,
@@ -580,58 +558,18 @@ class Database:
                 ).fetchone()
             return self._customer_from_row(row) if row else None
 
-    def update_customer_status(
-        self, customer_id: int, status: str, *, expected_statuses: tuple[str, ...] | None = None
-    ) -> bool:
-        """Set a customer's status.
-
-        If `expected_statuses` is given, the UPDATE only applies when the
-        customer's CURRENT status (checked atomically, in the same SQL
-        statement, not via a separate read beforehand) is still one of
-        those values -- this is what makes a status transition safe to
-        call from two overlapping requests for the same customer_id (e.g.
-        a rapid double-tap on an outcome button firing two near-
-        simultaneous POSTs, each handled on its own thread by
-        ThreadingHTTPServer). A plain "read status, check it, then write"
-        sequence is NOT atomic: both requests can read the same
-        pre-transition status before either commits its write, so both
-        proceed to apply their full side effects (event recording,
-        attempt-count increments, etc.) -- confirmed reproducible with 5
-        concurrent threads landing 5x the intended attempt_count and
-        event rows before this fix. A single UPDATE ... WHERE status IN
-        (...) is atomic under SQLite's own locking: only the first writer
-        to actually commit can match the WHERE clause, so a second,
-        losing request's UPDATE affects zero rows.
-
-        Returns True if a row was actually updated, False if no row
-        matched (missing customer_id, or -- when expected_statuses is
-        given -- the customer had already moved out of the expected
-        status, meaning the caller lost a race and should not apply any
-        side effects for this call).
-        """
+    def update_customer_status(self, customer_id: int, status: str) -> None:
         timestamp = datetime.now(timezone.utc).isoformat()
         with self.connect() as conn:
-            if expected_statuses:
-                placeholders = ", ".join("?" for _ in expected_statuses)
-                cursor = conn.execute(
-                    f"""
-                    UPDATE customers
-                    SET status = ?, status_timestamp = ?, warning_note = NULL
-                    WHERE id = ? AND status IN ({placeholders})
-                    """,
-                    (status, timestamp, customer_id, *expected_statuses),
-                )
-            else:
-                cursor = conn.execute(
-                    """
-                    UPDATE customers
-                    SET status = ?, status_timestamp = ?, warning_note = NULL
-                    WHERE id = ?
-                    """,
-                    (status, timestamp, customer_id),
-                )
+            conn.execute(
+                """
+                UPDATE customers
+                SET status = ?, status_timestamp = ?, warning_note = NULL
+                WHERE id = ?
+                """,
+                (status, timestamp, customer_id),
+            )
             conn.commit()
-            return cursor.rowcount > 0
 
     def count_by_status(self, status: str) -> int:
         with self.connect() as conn:
@@ -700,7 +638,7 @@ class Database:
     # Search, history, editing, blacklist -- the customer-record surface.
     # -----------------------------------------------------------------------
 
-    def search_customers(self, query: str, limit: int = 20, fields: list[str] | None = None) -> list[dict[str, Any]]:
+    def search_customers(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
         """Search across loan number, name, and phone numbers.
 
         Searches every customer regardless of status (waiting, warned,
@@ -715,56 +653,24 @@ class Database:
         zero results even with a customer named exactly John Smith on
         file, since first_name/last_name are separate columns and
         neither alone contains the full typed string.
-
-        `fields` scopes which of the three field groups
-        ("name", "loanNumber", "phone") get OR'd into the WHERE clause
-        -- the real backend enforcement behind Settings > Search >
-        Default Search Fields (MiniAppService.search_customers reads
-        that setting and passes it through here; nothing about which
-        fields are searched happens client-side). `None` (the default,
-        used by every pre-existing caller) means "no restriction, search
-        all three" -- unchanged from this method's original behavior.
         """
         stripped = query.strip()
         if not stripped:
             return []
         pattern = f"%{stripped}%"
-        active_fields = set(fields) if fields is not None else {"name", "loanNumber", "phone"}
-        clauses: list[str] = []
-        params: list[str] = []
-        if "loanNumber" in active_fields:
-            clauses.append("loan_number LIKE ?")
-            params.append(pattern)
-        if "name" in active_fields:
-            clauses.append("first_name LIKE ?")
-            params.append(pattern)
-            clauses.append("last_name LIKE ?")
-            params.append(pattern)
-            clauses.append("(first_name || ' ' || last_name) LIKE ?")
-            params.append(pattern)
-        if "phone" in active_fields:
-            clauses.append("phone_numbers LIKE ?")
-            params.append(pattern)
-        if not clauses:
-            # Every field group was excluded (e.g. an empty `fields`
-            # list slipped through despite the service layer's own
-            # fallback) -- searching literally nothing would silently
-            # break the Search screen for every query, which is worse
-            # than ignoring an impossible restriction. Fall back to the
-            # unrestricted default rather than returning zero results
-            # for every search.
-            clauses = ["loan_number LIKE ?", "first_name LIKE ?", "last_name LIKE ?", "phone_numbers LIKE ?", "(first_name || ' ' || last_name) LIKE ?"]
-            params = [pattern, pattern, pattern, pattern, pattern]
-        where_sql = " OR ".join(clauses)
         with self.connect() as conn:
             rows = conn.execute(
-                f"""
+                """
                 SELECT * FROM customers
-                WHERE {where_sql}
+                WHERE loan_number LIKE ?
+                   OR first_name LIKE ?
+                   OR last_name LIKE ?
+                   OR phone_numbers LIKE ?
+                   OR (first_name || ' ' || last_name) LIKE ?
                 ORDER BY id DESC
                 LIMIT ?
                 """,
-                (*params, limit),
+                (pattern, pattern, pattern, pattern, pattern, limit),
             ).fetchall()
             return [self._customer_from_row(row) for row in rows]
 

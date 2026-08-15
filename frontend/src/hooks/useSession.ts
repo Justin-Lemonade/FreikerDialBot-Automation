@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import type { SessionSummary } from '../types';
 
@@ -26,33 +26,16 @@ export const useSession = () => {
   // indicator.
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
 
-  // Monotonic counter guarding against out-of-order responses. App.tsx
-  // polls refreshSession() every 5s AND calls applySession() directly
-  // after /call/result, /queue/pause, /queue/resume, /queue/call-back --
-  // any of which can resolve out of issue order under real network
-  // conditions (e.g. a poll fired just before an outcome submit, slow
-  // enough that it resolves just after applySession already set the
-  // fresh post-outcome session). Without this guard, that stale GET
-  // response would silently overwrite the newer state -- the same bug
-  // class as UI Pass 8's stale-settings finding, just for session state
-  // instead of settings state. Every issued request/apply bumps the
-  // counter; a response is only applied if it's still the most recent
-  // one issued, so an old response can never clobber a newer one.
-  const requestIdRef = useRef(0);
-
   const refreshSession = useCallback(async () => {
-    const requestId = ++requestIdRef.current;
     setLoadState((prev) => (prev === 'idle' ? 'loading' : prev));
     try {
       const next = await api.getCurrentSession();
-      if (requestId !== requestIdRef.current) return; // superseded -- discard
       setSession(next);
       setLoadState('success');
       setIsStale(false);
       setError(null);
       setLastSyncedAt(Date.now());
     } catch (err) {
-      if (requestId !== requestIdRef.current) return; // superseded -- discard
       const message = err instanceof ApiError ? err.message : 'Could not load session.';
       setError(message);
       setLoadState((prev) => (prev === 'idle' ? 'error' : prev));
@@ -68,11 +51,8 @@ export const useSession = () => {
 
   /** Applies a session object the backend already returned from another
    * call (e.g. /call/result's `session` field) without an extra round
-   * trip -- still the backend's own data, just already in hand. Bumps
-   * the request counter so any older, still-in-flight refreshSession()
-   * response can no longer overwrite this newer, known-fresh state. */
+   * trip -- still the backend's own data, just already in hand. */
   const applySession = useCallback((next: SessionSummary) => {
-    requestIdRef.current += 1;
     setSession(next);
     setLoadState('success');
     setIsStale(false);

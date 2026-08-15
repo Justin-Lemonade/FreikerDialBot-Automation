@@ -12,7 +12,7 @@ import { useSession } from './hooks/useSession';
 import { useCustomer } from './hooks/useCustomer';
 import { useTelegram } from './hooks/useTelegram';
 import { useCallTimer } from './hooks/useCallTimer';
-import { useAppSettings } from './hooks/appSettingsContext';
+import { useAppSettings } from './hooks/useAppSettings';
 import { useUpcomingQueue } from './hooks/useUpcomingQueue';
 import { api, ApiError } from './api/client';
 import type { Customer, Screen } from './types';
@@ -50,20 +50,13 @@ const App = () => {
   const timer = useCallTimer();
   const { settings } = useAppSettings();
 
-  // Settings > Appearance > Accent Color / Animation Intensity: applied
-  // as data attributes on the document root, which index.css reads to
-  // override the relevant CSS custom properties/animation-durations.
-  // A plain side effect (not prop drilling) since every themed
-  // element in the app inherits from the root regardless of which
-  // component tree it's in -- the same reason prefers-reduced-motion
-  // is handled with a root-level media query rather than a prop
-  // threaded through every animated component.
+  // Applies Settings > Appearance > Animation Intensity by toggling a
+  // root-level data attribute that index.css's animation keyframes key
+  // off of -- one real setting controlling every transition/glow
+  // animation at once (card slide, progress-cell "charge" flash,
+  // nav-tab pop), not a fake per-animation toggle list.
   useEffect(() => {
-    document.documentElement.dataset.accent = settings.accentColor;
-  }, [settings.accentColor]);
-
-  useEffect(() => {
-    document.documentElement.dataset.motion = settings.animationIntensity;
+    document.documentElement.setAttribute('data-motion', settings.animationIntensity);
   }, [settings.animationIntensity]);
 
   // Poll every 5s so the progress bar / current customer stay live even
@@ -97,14 +90,7 @@ const App = () => {
   // workflow, so completing shouldn't yank someone away from it the
   // way it does from the live 'calling' screen.
   useEffect(() => {
-    // 'upload' is exempt for the same reason 'home' etc. are: it's an
-    // out-of-band action reachable from Landing regardless of queue
-    // state (an operator who just finished the queue is exactly who
-    // wants to upload more customers next). Without this, the 5s
-    // session poll would detect session.completed still true and yank
-    // the operator to the completion screen mid-upload on every poll
-    // tick, since nothing about visiting Upload changes session state.
-    const exemptScreens: Screen[] = ['home', 'complete', 'statistics', 'commands', 'search', 'customerDetail', 'upload'];
+    const exemptScreens: Screen[] = ['home', 'complete', 'statistics', 'commands', 'search', 'customerDetail'];
     if (session?.completed && !exemptScreens.includes(screen)) {
       setScreen('complete');
     }
@@ -315,8 +301,6 @@ const App = () => {
           activePhone={activePhone}
           onSelectPhone={setSelectedPhone}
           visibleFields={settings.visibleFields}
-          cardDensity={settings.cardDensity}
-          notesPreview={settings.notesPreview}
           upcomingPreview={upcomingPreview}
           onOpenDetail={() => {
             if (!currentCustomer) return;
@@ -380,7 +364,6 @@ const App = () => {
       lastSyncedAt={lastSyncedAt}
       bannerError={actionError}
       onDismissError={() => setActionError(null)}
-      progressDensity={settings.progressDensity}
     >
       {renderScreen()}
     </MainLayout>
